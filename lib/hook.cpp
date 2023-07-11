@@ -379,6 +379,15 @@ class BackTraceCollection {
             return;
         }
         cached_map_.insert(std::make_pair(func_ptr, backtraces_.size()));
+
+        // using namespace backward;
+        // StackTrace st; st.load_here(32);
+        // Printer p;
+        // p.object = true;
+        // p.color_mode = ColorMode::always;
+        // p.address = true;
+        // p.print(st, stderr);
+
         void* buffer[32];
         char** symbols;
         int num = backtrace(buffer, 32);
@@ -397,23 +406,23 @@ class BackTraceCollection {
 
     void dump() {
         std::ofstream ofs("./backtrace.log");
-        for(const auto& backtrace : backtraces_) {
-            ofs << "[call " << std::get<1>(backtrace) << "]\n";
-            for(const auto& line : std::get<0>(backtrace)) {
-                ofs << line << "\n";
+        for(size_t i = 0; i < backtraces_.size(); ++i) {
+            ofs << "[call " << std::get<1>(backtraces_[i]) << "]\n";
+            for(size_t j = 0; i < std::get<0>(backtraces_[i]).size(); ++j) {
+                ofs << std::get<0>(backtraces_[i])[j] << " Global Addr:" << backtrace_addrs_[i][j] << "\n";
             }
         }
         ofs.flush();
         ofs.close();
 
-        ofs.open("./backtrace_addrs.log");
-        for(const auto& backtrace : backtrace_addrs_) {
-            ofs << "[call]" << "\n";
-            for(const auto& line : backtrace) {
-                ofs << line << "\n";
-            }
-        }
-        ofs.flush();
+        // ofs.open("./backtrace_addrs.log");
+        // for(const auto& backtrace : backtrace_addrs_) {
+        //     ofs << "[call]" << "\n";
+        //     for(const auto& line : backtrace) {
+        //         ofs << line << "\n";
+        //     }
+        // }
+        // ofs.flush();
 
     }
 
