@@ -28,7 +28,7 @@ def main():
             if line.find("libtorch_cuda.so") == -1:
                 continue
             def repl(g):
-                return g.group(0).replace(g.group(1), addr2line(g.group(1)[1:]))[0]
+                return g.group(0).replace(g.group(1), addr2line(g.group(1)[1:])[0])
             line = re.sub(r".*libtorch_cuda.so\((\+.*?)\)", repl, line)
             lines.append(line)
     with open(file, "wt") as f:

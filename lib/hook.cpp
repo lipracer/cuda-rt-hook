@@ -23,7 +23,7 @@
 #include <atomic>
 #include <fstream>
 
-#include "backward.hpp"
+// #include "backward.hpp"
 
 #include "cuda_types.h"
 #include "internal.h"
@@ -364,8 +364,42 @@ const char* kPytorchCudaLibName = "libtorch_cuda.so";
 
 class BackTraceCollection {
    public:
-    using BackTrace = std::vector<std::string>;
-    using BackTraceAddr = std::vector<const void*>;
+
+    class CallStackInfo {
+       public:
+        static constexpr size_t kMaxStackDeep = 64;
+
+        CallStackInfo() {
+            backtrace_addrs_.reserve(kMaxStackDeep);
+            backtrace_.reserve(kMaxStackDeep);
+        }
+        bool snapshot() {
+            void* buffer[kMaxStackDeep] = {0};
+            char** symbols = nullptr;
+            int num = backtrace(buffer, kMaxStackDeep);
+            CHECK(num > 0,
+                  "Expect frams num {" + std::to_string(num) + "} > 0!");
+            symbols = backtrace_symbols(buffer, num);
+            if (symbols == nullptr) {
+                return false;
+            }
+            LOG(0) << "get stack deep num:" << num;
+            for (int j = 0; j < num; j++) {
+                LOG(0) << "current frame " << j << " addr:" << buffer[j]
+                       << " symbol:" << symbols[j];
+                backtrace_addrs_.push_back(buffer[j]);
+                backtrace_.emplace_back(symbols[j]);
+            }
+            // free(symbols);
+        }
+
+        friend std::ostream& operator<<(std::ostream&, const CallStackInfo&);
+
+       private:
+        std::vector<const void*> backtrace_addrs_;
+        std::vector<std::string> backtrace_;
+    };
+
     static BackTraceCollection& instance() {
         static BackTraceCollection self;
         return self;
@@ -380,37 +414,17 @@ class BackTraceCollection {
         }
         cached_map_.insert(std::make_pair(func_ptr, backtraces_.size()));
 
-        // using namespace backward;
-        // StackTrace st; st.load_here(32);
-        // Printer p;
-        // p.object = true;
-        // p.color_mode = ColorMode::always;
-        // p.address = true;
-        // p.print(st, stderr);
-
-        void* buffer[32];
-        char** symbols;
-        int num = backtrace(buffer, 32);
-        symbols = backtrace_symbols(buffer, num);
-        if (symbols == NULL) {
+        backtraces_.emplace_back();
+        if (!std::get<0>(backtraces_.back()).snapshot()) {
             LOG(2) << "can't get backtrace symbol!";
         }
-        backtraces_.emplace_back();
-        backtrace_addrs_.emplace_back();
-        for (int j = 0; j < num; j++) {
-            std::get<0>(backtraces_.back()).push_back(symbols[j]);
-            backtrace_addrs_.back().push_back(buffer[j]);
-        }
-        free(symbols);
     }
 
     void dump() {
         std::ofstream ofs("./backtrace.log");
-        for(size_t i = 0; i < backtraces_.size(); ++i) {
-            ofs << "[call " << std::get<1>(backtraces_[i]) << "]\n";
-            for(size_t j = 0; i < std::get<0>(backtraces_[i]).size(); ++j) {
-                ofs << std::get<0>(backtraces_[i])[j] << " Global Addr:" << backtrace_addrs_[i][j] << "\n";
-            }
+        for (const auto& stack_info : backtraces_) {
+            ofs << "[call " << std::get<1>(stack_info) << "]\n";
+            ofs << std::get<0>(stack_info);
         }
         ofs.flush();
         ofs.close();
@@ -429,10 +443,18 @@ class BackTraceCollection {
     ~BackTraceCollection() { dump(); }
 
    private:
-    std::vector<std::tuple<BackTrace, size_t>> backtraces_;
-    std::vector<BackTraceAddr> backtrace_addrs_;
+    std::vector<std::tuple<CallStackInfo, size_t>> backtraces_;
     std::unordered_map<const void*, size_t> cached_map_;
 };
+
+std::ostream& operator<<(std::ostream& os,
+                         const BackTraceCollection::CallStackInfo& info) {
+    for (size_t i = 0; i < info.backtrace_.size(); ++i) {
+        os << info.backtrace_[i] << "GlobalAddress:" << info.backtrace_addrs_[i]
+           << "\n";
+    }
+    return os;
+}
 
 extern "C" CUresult cudaLaunchKernel_wrapper(const void* func, dim3 gridDim,
                                              dim3 blockDim, void** args,
