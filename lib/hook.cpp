@@ -23,6 +23,8 @@
 #include <atomic>
 #include <fstream>
 
+#include "backward.hpp"
+
 #include "cuda_types.h"
 #include "internal.h"
 
