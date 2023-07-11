@@ -1,0 +1,39 @@
+#!/usr/bin/env python
+import sys, os
+
+args = sys.argv[1:]
+
+error_index = -1
+for i in range(len(args)):
+    if args[i].find('fvisibility') != -1:
+        error_index = i
+        break
+if error_index > 0:
+    ll = args[error_index].split(' ')
+    new_ll = []
+    for it in ll:
+        if it.find('fvisibility') != -1:
+            new_ll.append('-Xcompiler')
+        new_ll.append(it)
+    new_ll.append('-g')
+    args[error_index] = ' '.join(new_ll)
+
+args.insert(0, "-g")
+str_args = ' '.join(args)
+
+cmd = ''
+if str_args.find("version") != -1:
+    cmd = f"nvcc_b {str_args}"
+else:
+
+    # if str_args.find("-O3") != -1:
+    #     str_args = str_args.replace("-O3", "-O0")
+    # if str_args.find("-O2") != -1:
+    #     str_args = str_args.replace("-O2", "-O0")
+
+    cmd = f"/usr/local/cuda/bin/nvcc_b {str_args}"
+# cmd = f"nvcc -g {str_args}"
+print(cmd)
+r = os.system(cmd)
+if r != 0:
+    print(f'fail cmd: {sys.argv}')

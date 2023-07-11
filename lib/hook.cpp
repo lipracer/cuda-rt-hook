@@ -363,6 +363,7 @@ const char* kPytorchCudaLibName = "libtorch_cuda.so";
 class BackTraceCollection {
    public:
     using BackTrace = std::vector<std::string>;
+    using BackTraceAddr = std::vector<const void*>;
     static BackTraceCollection& instance() {
         static BackTraceCollection self;
         return self;
@@ -384,8 +385,10 @@ class BackTraceCollection {
             LOG(2) << "can't get backtrace symbol!";
         }
         backtraces_.emplace_back();
+        backtrace_addrs_.emplace_back();
         for (int j = 0; j < num; j++) {
             std::get<0>(backtraces_.back()).push_back(symbols[j]);
+            backtrace_addrs_.back().push_back(buffer[j]);
         }
         free(symbols);
     }
@@ -393,18 +396,30 @@ class BackTraceCollection {
     void dump() {
         std::ofstream ofs("./backtrace.log");
         for(const auto& backtrace : backtraces_) {
-            ofs << "call this cuda func " << std::get<1>(backtrace) << "\n";
+            ofs << "[call " << std::get<1>(backtrace) << "]\n";
             for(const auto& line : std::get<0>(backtrace)) {
                 ofs << line << "\n";
             }
         }
         ofs.flush();
+        ofs.close();
+
+        ofs.open("./backtrace_addrs.log");
+        for(const auto& backtrace : backtrace_addrs_) {
+            ofs << "[call]" << "\n";
+            for(const auto& line : backtrace) {
+                ofs << line << "\n";
+            }
+        }
+        ofs.flush();
+
     }
 
     ~BackTraceCollection() { dump(); }
 
    private:
     std::vector<std::tuple<BackTrace, size_t>> backtraces_;
+    std::vector<BackTraceAddr> backtrace_addrs_;
     std::unordered_map<const void*, size_t> cached_map_;
 };
 

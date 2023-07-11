@@ -4,8 +4,8 @@ g_lib_name = "/opt/conda/lib/python3.10/site-packages/torch/lib/libtorch_cuda.so
 def addr2line(addr):
     s = f"addr2line -e {g_lib_name} -f {addr}"
     with os.popen(s) as pf:
-        symbol = pf.readlines()[0]
-        return symbol.strip()
+        symbol = pf.readlines()
+        return [s.strip() for s in symbol]
 
 def demangler(symbol):
     end = symbol.find("+0x")
@@ -28,7 +28,7 @@ def main():
             if line.find("libtorch_cuda.so") == -1:
                 continue
             def repl(g):
-                return g.group(0).replace(g.group(1), addr2line(g.group(1)[1:]))
+                return g.group(0).replace(g.group(1), addr2line(g.group(1)[1:]))[0]
             line = re.sub(r".*libtorch_cuda.so\((\+.*?)\)", repl, line)
             lines.append(line)
     with open(file, "wt") as f:
@@ -45,6 +45,12 @@ def main():
     with open(file, "wt") as f:
         for line in lines:
             f.write(line)
+
+    with open("backtrace_addrs.log", "rt+") as f:
+        for line in f.readlines():
+            if line.find("call") == -1:
+                print(addr2line(line))
+
 
 if __name__ == "__main__":
     main()
