@@ -226,6 +226,7 @@ unknown_perms:
 struct HookTarget {
     std::string lib_name;
     std::string func_name;
+    void* base_ptr = nullptr;
     void* new_func = nullptr;
     void* old_func = nullptr;
     std::function<bool(const std::string& name)> fileter;
@@ -260,7 +261,7 @@ class CudaInfoCollection {
 int install_hooker(PltTable* pltTable, HookTarget& hookTarget) {
     CudaInfoCollection::instance().collectRtLib(pltTable->lib_name);
     if (hookTarget.fileter && hookTarget.fileter(pltTable->lib_name)) {
-        return 0;
+        return -1;
     }
     LOG(0) << "install lib name:" << pltTable->lib_name;
     size_t index = 0;
@@ -289,6 +290,7 @@ int install_hooker(PltTable* pltTable, HookTarget& hookTarget) {
                 return -1;
             }
         }
+        hookTarget.base_ptr = pltTable->base_addr;
         hookTarget.old_func = addr;
         *reinterpret_cast<size_t*>(addr) =
             reinterpret_cast<size_t>(hookTarget.new_func);
@@ -300,7 +302,7 @@ int install_hooker(PltTable* pltTable, HookTarget& hookTarget) {
         return 0;
     }
     LOG(0) << "can't find symbol:" << hookTarget.func_name;
-    return 0;
+    return -1;
 }
 
 int retrieve_dyn_lib(struct dl_phdr_info* info, size_t info_size, void* table) {
@@ -423,8 +425,9 @@ class BackTraceCollection {
 
     void dump() {
         std::ofstream ofs("./backtrace.log");
+        ofs << "[base address]:" << base_addr_ << "\b";
         for (const auto& stack_info : backtraces_) {
-            ofs << "[call " << std::get<1>(stack_info) << "]\n";
+            ofs << "[call " << std::get<1>(stack_info) << " times" << "]\n";
             ofs << std::get<0>(stack_info);
         }
         ofs.flush();
@@ -441,11 +444,14 @@ class BackTraceCollection {
 
     }
 
+    void setBaseAddr(void* addr) { base_addr_ = addr; }
+
     ~BackTraceCollection() { dump(); }
 
    private:
     std::vector<std::tuple<CallStackInfo, size_t>> backtraces_;
     std::unordered_map<const void*, size_t> cached_map_;
+    void* base_addr_{nullptr};
 };
 
 std::ostream& operator<<(std::ostream& os,
@@ -510,12 +516,16 @@ void install_hook() {
         HookTarget hookTarget = HookTarget{
             .lib_name = kPytorchCudaLibName,
             .func_name = "cudaLaunchKernel",
+            .base_ptr = nullptr,
             .new_func = reinterpret_cast<void*>(&cudaLaunchKernel_wrapper),
             .old_func = nullptr};
 
         for (auto& pltTable : vecPltTable) {
-            install_hooker(&pltTable, hookTarget);
+            if (!install_hooker(&pltTable, hookTarget)) {
+                break;
+            }
         }
+        BackTraceCollection::instance().setBaseAddr(hookTarget.base_ptr);
         function_map[hookTarget.new_func] = hookTarget.old_func;
     }
 
