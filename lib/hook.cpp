@@ -425,9 +425,9 @@ class BackTraceCollection {
 
     void dump() {
         std::ofstream ofs("./backtrace.log");
-        ofs << "[base address]:" << base_addr_ << "\b";
+        ofs << "ignore:[base address]:" << base_addr_ << "\n";
         for (const auto& stack_info : backtraces_) {
-            ofs << "[call " << std::get<1>(stack_info) << " times" << "]\n";
+            ofs << "ignore:[call " << std::get<1>(stack_info) << " times" << "]\n";
             ofs << std::get<0>(stack_info);
         }
         ofs.flush();

@@ -16,40 +16,49 @@ def demangler(symbol):
         symbol = pf.readlines()[0]
         return symbol.strip()
 
-def main():
-    g_lib_name = sys.argv[1]
-    file = sys.argv[2]
+def parse_and_filter(file):
     lines = []
     with open(file, "rt") as f:
         for line in f.readlines():
-            if line.find("call this cuda func") != -1:
+            base_addr_int = 0
+            if line.find("ignore:[base address]:") != -1:
+                base_addr = line[len("ignore:[base address]:"):]
+                base_addr_int = int(base_addr, 16)
+            if line.find("ignore") != -1:
                 lines.append(line)
                 continue
             if line.find("libtorch_cuda.so") == -1:
                 continue
             def repl(g):
-                return g.group(0).replace(g.group(1), addr2line(g.group(1)[1:])[0])
-            line = re.sub(r".*libtorch_cuda.so\((\+.*?)\)", repl, line)
+                file_addr = hex(int(g.group(3), 16) - base_addr_int)
+                # info = addr2line(g.group(1)[1:])[0]
+                info = addr2line(file_addr)
+                symbol = info[0]
+                sorce_file = info[1]
+                result = g.group(0).replace(g.group(2), symbol)
+                return result.replace(g.group(1), sorce_file)
+            line = re.sub(r"(.*libtorch_cuda.so)\((\+.*?)\) \[(.*?)\]", repl, line)
             lines.append(line)
     with open(file, "wt") as f:
         for line in lines:
             f.write(line)
 
-    lines = []
-    with open(file, "rt") as f:
-        for line in f.readlines():
-            def repl(g):
-                return g.group(0).replace(g.group(1), demangler(g.group(1)))
-            line = re.sub(r".*libtorch_cuda.so\(([\s|\S]*?)[\)|\n]", repl, line, re.M)
-            lines.append(line)
-    with open(file, "wt") as f:
-        for line in lines:
-            f.write(line)
+def main():
+    # g_lib_name = sys.argv[1]
+    # file = sys.argv[2]
+    file = sys.argv[1]
+    parse_and_filter(file)
+    # lines = []
+    # with open(file, "rt") as f:
+    #     for line in f.readlines():
+    #         def repl(g):
+    #             return g.group(0).replace(g.group(1), demangler(g.group(1)))
+    #         line = re.sub(r".*libtorch_cuda.so\(([\s|\S]*?)[\)|\n]", repl, line, re.M)
+    #         lines.append(line)
+    # with open(file, "wt") as f:
+    #     for line in lines:
+    #         f.write(line)
 
-    with open("backtrace_addrs.log", "rt+") as f:
-        for line in f.readlines():
-            if line.find("call") == -1:
-                print(addr2line(line))
 
 
 if __name__ == "__main__":
