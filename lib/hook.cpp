@@ -390,7 +390,8 @@ class BackTraceCollection {
                 backtrace_addrs_.push_back(buffer[j]);
                 backtrace_.emplace_back(symbols[j]);
             }
-            // free(symbols);
+            free(symbols);
+            return true;
         }
 
         friend std::ostream& operator<<(std::ostream&, const CallStackInfo&);
@@ -464,15 +465,15 @@ extern "C" CUresult cudaLaunchKernel_wrapper(const void* func, dim3 gridDim,
     {
         std::lock_guard<std::mutex> guard(mtx);
         BackTraceCollection::instance().collect_backtrace(func);
-
-        auto func_name = reinterpret_cast<const char*>(func);
-        // LOG(0) << __func__ << ":" << std::string(func_name, 16);
-        static void* org_addr =
-            CudaInfoCollection::instance().getSymbolAddr("cudaLaunchKernel");
-        // org_addr =
-        // function_map[reinterpret_cast<void*>(&cudaLaunchKernel_wrapper)];
-        CHECK(org_addr, "empty cudaLaunchKernel addr!");
     }
+
+    auto func_name = reinterpret_cast<const char*>(func);
+    // LOG(0) << __func__ << ":" << std::string(func_name, 16);
+    static void* org_addr =
+        CudaInfoCollection::instance().getSymbolAddr("cudaLaunchKernel");
+    // org_addr =
+    // function_map[reinterpret_cast<void*>(&cudaLaunchKernel_wrapper)];
+    CHECK(org_addr, "empty cudaLaunchKernel addr!");
     return reinterpret_cast<decltype(&cudaLaunchKernel_wrapper)>(org_addr)(
         func, gridDim, blockDim, args, sharedMem, stream);
 }
