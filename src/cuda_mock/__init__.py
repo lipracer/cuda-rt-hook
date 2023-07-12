@@ -1,4 +1,4 @@
 from .cuda_mock_impl import add
-from .cuda_mock_impl import init
+from .cuda_mock_impl import initialize
 
-init()
+initialize()

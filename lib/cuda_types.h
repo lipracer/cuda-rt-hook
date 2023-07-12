@@ -1,3 +1,5 @@
+#pragma once
+
 typedef int CUresult;
 typedef void* CUfunction;
 typedef void* CUstream;

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cstdlib>
 #include <iostream>
 
@@ -6,14 +8,13 @@
         if (!!!p) throw std::runtime_error(msg); \
     } while (0);
 
+namespace logger {
+
 enum class LogLevel { info = 0, debug, warning, error };
 
 class LogStream {
    public:
-    static LogStream& instance() {
-        static LogStream __instance;
-        return __instance;
-    }
+    static LogStream& instance();
 
     LogStream() {
         auto strLevel = std::getenv("LOG_LEVEL");
@@ -21,6 +22,8 @@ class LogStream {
             level_ = static_cast<LogLevel>(atoi(strLevel));
         }
     }
+
+    void flush() { std::cout << std::endl; }
 
     LogLevel getLevel() const { return level_; }
 
@@ -30,7 +33,7 @@ class LogStream {
 
 #define LOG_CONDITATION(level)    \
     (static_cast<int>((level)) >= \
-     static_cast<int>(LogStream::instance().getLevel()))
+     static_cast<int>(logger::LogStream::instance().getLevel()))
 
 template <typename T>
 static LogStream& operator<<(LogStream& s, const T& t) {
@@ -43,7 +46,7 @@ struct LogWrapper {
     explicit LogWrapper(int level) : level_(static_cast<LogLevel>(level)) {}
     ~LogWrapper() {
         if (LOG_CONDITATION(level_)) {
-            std::cout << std::endl;
+            LogStream::instance().flush();
         }
     }
     LogLevel level_;
@@ -61,5 +64,11 @@ class StreamPlaceHolder {};
 
 static void operator<(const StreamPlaceHolder&, const LogWrapper&) {}
 
-#define LOG(level) \
-    !LOG_CONDITATION(level) ? void(0) : StreamPlaceHolder() < LogWrapper(level)
+}  // namespace logger
+
+#define LOG(level)                                                    \
+    !LOG_CONDITATION(level)                                           \
+        ? void(0)                                                     \
+        : logger::StreamPlaceHolder() < logger::LogWrapper(level)     \
+                                            << "[" << __FILE__ << ":" \
+                                            << __LINE__ << "]"

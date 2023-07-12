@@ -26,7 +26,7 @@
 // #include "backward.hpp"
 
 #include "cuda_types.h"
-#include "internal.h"
+#include "logger.h"
 
 #if defined __x86_64__ || defined __x86_64
 #define R_JUMP_SLOT R_X86_64_JUMP_SLOT
@@ -223,44 +223,11 @@ unknown_perms:
     return 0;
 }
 
-struct HookTarget {
-    std::string lib_name;
-    std::string func_name;
-    void* base_ptr = nullptr;
-    void* new_func = nullptr;
-    void* old_func = nullptr;
-    std::function<bool(const std::string& name)> fileter;
-};
-
-class CudaInfoCollection {
-   public:
-    static CudaInfoCollection& instance() {
-        static CudaInfoCollection self;
-        return self;
-    }
-    void collectRtLib(std::string lib) {
-        if (libcudart_.empty() &&
-            lib.find(cudaRTLibPath) != std::string::npos) {
-            libcudart_ = lib;
-        }
-    }
-
-    void* getSymbolAddr(const std::string& name) {
-        CHECK(!libcudart_.empty(), "libcudart empty!");
-        auto handle = dlopen(libcudart_.c_str(), RTLD_LAZY);
-        CHECK(handle, std::string("can't open ") + libcudart_);
-        return dlsym(handle, name.c_str());
-    }
-
-   private:
-    const std::string cudaRTLibPath = "libcudart.so";
-    std::string libcudart_;
-    std::atomic<void*> handle_{nullptr};
-};
-
-int install_hooker(PltTable* pltTable, HookTarget& hookTarget) {
-    CudaInfoCollection::instance().collectRtLib(pltTable->lib_name);
-    if (hookTarget.fileter && hookTarget.fileter(pltTable->lib_name)) {
+int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
+    CHECK(installer.isTargetLib, "isTargetLib can't be empty!");
+    CHECK(installer.isTargetSymbol, "isTargetSymbol can't be empty!");
+    CHECK(installer.newFuncPtr, "new_func_ptr can't be empty!");
+    if (!installer.isTargetLib(pltTable->lib_name.c_str())) {
         return -1;
     }
     LOG(0) << "install lib name:" << pltTable->lib_name;
@@ -274,8 +241,7 @@ int install_hooker(PltTable* pltTable, HookTarget& hookTarget) {
         size_t idx = ELF64_R_SYM(plt->r_info);
         idx = pltTable->dynsym[idx].st_name;
         // printf("enum func name:%s\n", pltTable->symbol_table + idx);
-        if (hookTarget.func_name.find(pltTable->symbol_table + idx) ==
-            std::string::npos) {
+        if (!installer.isTargetSymbol(pltTable->symbol_table + idx)) {
             continue;
         }
         void* addr =
@@ -290,18 +256,19 @@ int install_hooker(PltTable* pltTable, HookTarget& hookTarget) {
                 return -1;
             }
         }
-        hookTarget.base_ptr = pltTable->base_addr;
-        hookTarget.old_func = addr;
+        hook::OriginalInfo originalInfo;
+        originalInfo.libName = pltTable->lib_name.c_str();
+        originalInfo.basePtr = pltTable->base_addr;
+        originalInfo.oldFuncPtr = addr;
         *reinterpret_cast<size_t*>(addr) =
-            reinterpret_cast<size_t>(hookTarget.new_func);
+            reinterpret_cast<size_t>(installer.newFuncPtr(originalInfo));
         if (!(prot & PROT_WRITE)) {
             mprotect(ALIGN_ADDR(addr), page_size, prot);
         }
         LOG(0) << "replace:" << pltTable->symbol_table + idx << " with "
-               << hookTarget.func_name << " success";
+               << pltTable->symbol_table + idx << " success";
         return 0;
     }
-    LOG(0) << "can't find symbol:" << hookTarget.func_name;
     return -1;
 }
 
@@ -356,138 +323,9 @@ int retrieve_dyn_lib(struct dl_phdr_info* info, size_t info_size, void* table) {
     return 0;
 }
 
-namespace cuda_mock {
+namespace hook {
 
 std::unordered_map<void*, void*> function_map;
-
-const char* kPytorchCudaLibName = "libtorch_cuda.so";
-
-#include <execinfo.h>
-
-class BackTraceCollection {
-   public:
-
-    class CallStackInfo {
-       public:
-        static constexpr size_t kMaxStackDeep = 64;
-
-        CallStackInfo() {
-            backtrace_addrs_.reserve(kMaxStackDeep);
-            backtrace_.reserve(kMaxStackDeep);
-        }
-        bool snapshot() {
-            void* buffer[kMaxStackDeep] = {0};
-            char** symbols = nullptr;
-            int num = backtrace(buffer, kMaxStackDeep);
-            CHECK(num > 0,
-                  "Expect frams num {" + std::to_string(num) + "} > 0!");
-            symbols = backtrace_symbols(buffer, num);
-            if (symbols == nullptr) {
-                return false;
-            }
-            LOG(0) << "get stack deep num:" << num;
-            for (int j = 0; j < num; j++) {
-                LOG(0) << "current frame " << j << " addr:" << buffer[j]
-                       << " symbol:" << symbols[j];
-                backtrace_addrs_.push_back(buffer[j]);
-                backtrace_.emplace_back(symbols[j]);
-            }
-            free(symbols);
-            return true;
-        }
-
-        friend std::ostream& operator<<(std::ostream&, const CallStackInfo&);
-
-       private:
-        std::vector<const void*> backtrace_addrs_;
-        std::vector<std::string> backtrace_;
-    };
-
-    static BackTraceCollection& instance() {
-        static BackTraceCollection self;
-        return self;
-    }
-
-    void collect_backtrace(const void* func_ptr) {
-        auto iter = cached_map_.find(func_ptr);
-
-        if (iter != cached_map_.end()) {
-            ++std::get<1>(backtraces_[iter->second]);
-            return;
-        }
-        cached_map_.insert(std::make_pair(func_ptr, backtraces_.size()));
-
-        backtraces_.emplace_back();
-        if (!std::get<0>(backtraces_.back()).snapshot()) {
-            LOG(2) << "can't get backtrace symbol!";
-        }
-    }
-
-    void dump() {
-        std::ofstream ofs("./backtrace.log");
-        ofs << "ignore:[base address]:" << base_addr_ << "\n";
-        for (const auto& stack_info : backtraces_) {
-            ofs << "ignore:[call " << std::get<1>(stack_info) << " times" << "]\n";
-            ofs << std::get<0>(stack_info);
-        }
-        ofs.flush();
-        ofs.close();
-
-        // ofs.open("./backtrace_addrs.log");
-        // for(const auto& backtrace : backtrace_addrs_) {
-        //     ofs << "[call]" << "\n";
-        //     for(const auto& line : backtrace) {
-        //         ofs << line << "\n";
-        //     }
-        // }
-        // ofs.flush();
-
-    }
-
-    void setBaseAddr(void* addr) { base_addr_ = addr; }
-
-    ~BackTraceCollection() { dump(); }
-
-   private:
-    std::vector<std::tuple<CallStackInfo, size_t>> backtraces_;
-    std::unordered_map<const void*, size_t> cached_map_;
-    void* base_addr_{nullptr};
-};
-
-std::ostream& operator<<(std::ostream& os,
-                         const BackTraceCollection::CallStackInfo& info) {
-    for (size_t i = 0; i < info.backtrace_.size(); ++i) {
-        os << info.backtrace_[i] << "GlobalAddress:" << info.backtrace_addrs_[i]
-           << "\n";
-    }
-    return os;
-}
-
-extern "C" CUresult cudaLaunchKernel_wrapper(const void* func, dim3 gridDim,
-                                             dim3 blockDim, void** args,
-                                             size_t sharedMem,
-                                             cudaStream_t stream) {
-    static std::mutex mtx;
-    {
-        std::lock_guard<std::mutex> guard(mtx);
-        BackTraceCollection::instance().collect_backtrace(func);
-    }
-
-    auto func_name = reinterpret_cast<const char*>(func);
-    // LOG(0) << __func__ << ":" << std::string(func_name, 16);
-    static void* org_addr =
-        CudaInfoCollection::instance().getSymbolAddr("cudaLaunchKernel");
-    // org_addr =
-    // function_map[reinterpret_cast<void*>(&cudaLaunchKernel_wrapper)];
-    CHECK(org_addr, "empty cudaLaunchKernel addr!");
-    return reinterpret_cast<decltype(&cudaLaunchKernel_wrapper)>(org_addr)(
-        func, gridDim, blockDim, args, sharedMem, stream);
-}
-
-void* my_molloc(size_t size) {
-    LOG(0) << "my_malloc";
-    return nullptr;
-}
 
 // std::unordered_map<std::string, std::vector<void*>>
 
@@ -495,80 +333,28 @@ void* dlopen_wrapper(const char* pathname, int mode) {
     return dlopen(pathname, mode);
 }
 
-void* dlsym_wrapper(void* handle, const char* symbol) {
-    auto ret = dlsym(handle, symbol);
-    if (std::string(symbol).find("cudaLaunchKernel") != std::string::npos) {
-        LOG(0) << "replace cudaLaunchKernel!";
-        auto new_func = reinterpret_cast<void*>(&cudaLaunchKernel_wrapper);
-        function_map[new_func] = ret;
-        return new_func;
-    }
-    return ret;
-}
+// void* dlsym_wrapper(void* handle, const char* symbol) {
+//     auto ret = dlsym(handle, symbol);
+//     if (std::string(symbol).find("cudaLaunchKernel") != std::string::npos) {
+//         LOG(0) << "replace cudaLaunchKernel!";
+//         auto new_func = reinterpret_cast<void*>(&cudaLaunchKernel_wrapper);
+//         function_map[new_func] = ret;
+//         return new_func;
+//     }
+//     return ret;
+// }
 
-void install_hook() {
+void install_hook(const HookInstaller& installer) {
     page_size = sysconf(_SC_PAGESIZE);
 
     std::vector<PltTable> vecPltTable;
     dl_iterate_phdr(retrieve_dyn_lib, &vecPltTable);
     LOG(0) << "collect plt table size:" << vecPltTable.size();
     {
-        HookTarget hookTarget = HookTarget{
-            .lib_name = kPytorchCudaLibName,
-            .func_name = "cudaLaunchKernel",
-            .base_ptr = nullptr,
-            .new_func = reinterpret_cast<void*>(&cudaLaunchKernel_wrapper),
-            .old_func = nullptr};
-
         for (auto& pltTable : vecPltTable) {
-            if (!install_hooker(&pltTable, hookTarget)) {
-                break;
-            }
+            (void)install_hooker(&pltTable, installer);
         }
-        BackTraceCollection::instance().setBaseAddr(hookTarget.base_ptr);
-        function_map[hookTarget.new_func] = hookTarget.old_func;
     }
-
-    // auto libFilter = [](const std::string& name) -> bool {
-    //     if (name.empty()) {
-    //         return true;
-    //     }
-    //     auto pos = name.find_last_of("/");
-    //     if (pos != std::string::npos) {
-    //         auto libName = name.substr(pos);
-    //         if (libName.find("torch") == std::string::npos) {
-    //             return true;
-    //         }
-    //     }
-    //     return false;
-    // };
-
-    // {
-    //     HookTarget hookTarget =
-    //         HookTarget{.lib_name = "torch",
-    //                    .func_name = "dlopen",
-    //                    .new_func = reinterpret_cast<void*>(&dlopen_wrapper),
-    //                    .old_func = nullptr,
-    //                    .fileter = libFilter};
-
-    //     for (auto& pltTable : vecPltTable) {
-    //         install_hooker(&pltTable, hookTarget);
-    //     }
-    // }
-
-    // {
-    //     HookTarget hookTarget =
-    //         HookTarget{.lib_name = "torch",
-    //                    .func_name = "dlsym",
-    //                    .new_func = reinterpret_cast<void*>(&dlsym_wrapper),
-    //                    .old_func = nullptr,
-    //                    .fileter = libFilter};
-
-    //     for (auto& pltTable : vecPltTable) {
-    //         install_hooker(&pltTable, hookTarget);
-    //     }
-    // }
-
-    // CHECK(hookTarget.old_func, "install_hooker func error!");
 }
-}  // namespace cuda_mock
+
+}  // namespace hook
