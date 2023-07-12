@@ -7,7 +7,7 @@
 `pip install .`
 
 ### collect cuda operator call stack
-- find nvcc install path  
+- find nvcc installed path  
 `where nvcc`  
 - replace nvcc with my nvcc  
 `mv /usr/local/bin/nvcc /usr/local/bin/nvcc_bc`  
@@ -17,7 +17,7 @@
 - build and install cuda_mock
 - import cuda_mock after import torch
 - run your torch train script
-- we will dump the stack into backtrace.log and save to current path
+- we will dump the stack into backtrace.log and save it to current path
 - use parser script in content of tools parse backtrace.log
 
 ### debug

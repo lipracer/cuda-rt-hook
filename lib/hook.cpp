@@ -227,10 +227,10 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
     CHECK(installer.isTargetLib, "isTargetLib can't be empty!");
     CHECK(installer.isTargetSymbol, "isTargetSymbol can't be empty!");
     CHECK(installer.newFuncPtr, "new_func_ptr can't be empty!");
+    LOG(0) << "install lib name:" << pltTable->lib_name;
     if (!installer.isTargetLib(pltTable->lib_name.c_str())) {
         return -1;
     }
-    LOG(0) << "install lib name:" << pltTable->lib_name;
     size_t index = 0;
     while (index < pltTable->rela_plt_cnt) {
         auto plt = pltTable->rela_plt + index++;

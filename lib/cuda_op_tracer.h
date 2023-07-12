@@ -14,7 +14,6 @@ class CudaInfoCollection {
     void* getSymbolAddr(const std::string& name);
 
    private:
-    const std::string cudaRTLibPath = "libcudart.so";
     std::string libcudart_;
     std::atomic<void*> handle_{nullptr};
 };
@@ -54,6 +53,13 @@ class BackTraceCollection {
     void* base_addr_{nullptr};
 };
 
-hook::HookInstaller getHookInstaller();
+struct HookerInfo {
+    const char* srcLib = nullptr;
+    const char* targeLib = nullptr;
+    const char* symbolName = nullptr;
+    void* newFuncPtr = nullptr;
+};
+
+hook::HookInstaller getHookInstaller(const HookerInfo& info = HookerInfo{});
 
 }  // namespace tracer

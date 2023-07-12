@@ -23,6 +23,7 @@
 namespace tracer {
 
 static const char* kPytorchCudaLibName = "libtorch_cuda.so";
+static const char* kCudaRTLibName = "libcudart.so";
 
 CudaInfoCollection& CudaInfoCollection::instance() {
     static CudaInfoCollection self;
@@ -30,7 +31,7 @@ CudaInfoCollection& CudaInfoCollection::instance() {
 }
 
 void CudaInfoCollection::collectRtLib(const std::string& lib) {
-    if (libcudart_.empty() && lib.find(cudaRTLibPath) != std::string::npos) {
+    if (libcudart_.empty() && lib.find(kCudaRTLibName) != std::string::npos) {
         libcudart_ = lib;
     }
 }
@@ -133,9 +134,18 @@ std::ostream& operator<<(std::ostream& os,
     return os;
 }
 
-hook::HookInstaller getHookInstaller() {
+hook::HookInstaller getHookInstaller(const HookerInfo& info) {
+    static const char* symbolName = "cudaLaunchKernel";
+    static void* newFuncAddr = reinterpret_cast<void*>(&cudaLaunchKernel_wrapper);
+    if (info.srcLib && info.targeLib && info.symbolName && info.newFuncPtr) {
+        kPytorchCudaLibName = info.srcLib;
+        kCudaRTLibName = info.targeLib;
+        symbolName = info.symbolName;
+        newFuncAddr = info.newFuncPtr;
+    }
     hook::HookInstaller installer;
     installer.isTargetLib = [](const char* libName) -> bool {
+        LOG(0) << "visit lib:" << libName;
         CudaInfoCollection::instance().collectRtLib(libName);
         if (std::string(libName).find(kPytorchCudaLibName) !=
             std::string::npos) {
@@ -143,15 +153,16 @@ hook::HookInstaller getHookInstaller() {
         }
         return false;
     };
-    installer.isTargetSymbol = [](const char* symbol) -> bool {
-        if (std::string(symbol).find("cudaLaunchKernel") != std::string::npos) {
+    installer.isTargetSymbol = [=](const char* symbol) -> bool {
+        // LOG(0) << "visit symbol:" << symbol;
+        if (std::string(symbol) == symbolName) {
             return true;
         }
         return false;
     };
     installer.newFuncPtr = [](const hook::OriginalInfo& info) -> void* {
         BackTraceCollection::instance().setBaseAddr(info.basePtr);
-        return reinterpret_cast<void*>(&cudaLaunchKernel_wrapper);
+        return reinterpret_cast<void*>(newFuncAddr);
     };
     return installer;
 }

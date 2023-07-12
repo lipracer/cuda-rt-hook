@@ -64,11 +64,24 @@ class StreamPlaceHolder {};
 
 static void operator<(const StreamPlaceHolder&, const LogWrapper&) {}
 
+static constexpr const char* __SimpleFileName__(const char* file) {
+    const char* first = file;
+    const char* second = file;
+    while (*second) {
+        if (*second == '/') {
+            first = second;
+        }
+        ++second;
+    }
+    return first + 1;
+}
+
 }  // namespace logger
 
-#define LOG(level)                                                    \
-    !LOG_CONDITATION(level)                                           \
-        ? void(0)                                                     \
-        : logger::StreamPlaceHolder() < logger::LogWrapper(level)     \
-                                            << "[" << __FILE__ << ":" \
-                                            << __LINE__ << "]"
+#define LOG(level)                                                            \
+    !LOG_CONDITATION(level) ? void(0)                                         \
+                            : logger::StreamPlaceHolder() <                   \
+                                  logger::LogWrapper(level)                   \
+                                      << "["                                  \
+                                      << logger::__SimpleFileName__(__FILE__) \
+                                      << ":" << __LINE__ << "]"
