@@ -1,3 +1,4 @@
+## The plt hook technology used refers to [plthook](https://github.com/kubo/)  
 #### mock pytorch cuda runtime interface
 
 - build wheel package  
@@ -8,7 +9,7 @@
 
 ### collect cuda operator call stack
 - find nvcc installed path  
-`where nvcc`  
+`which nvcc`  
 - replace nvcc with my nvcc  
 `mv /usr/local/bin/nvcc /usr/local/bin/nvcc_bc`  
 `chmod 777 tools/nvcc`  
