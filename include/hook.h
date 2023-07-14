@@ -18,6 +18,7 @@ struct HookInstaller {
     std::function<bool(const char*)> isTargetLib;
     std::function<bool(const char*)> isTargetSymbol;
     std::function<void*(const OriginalInfo&)> newFuncPtr;
+    std::function<void(void)> onSuccess;
 };
 
 void install_hook(const HookInstaller& installer);

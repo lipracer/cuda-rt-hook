@@ -38,9 +38,9 @@ void CudaInfoCollection::collectRtLib(const std::string& lib) {
 
 void* CudaInfoCollection::getSymbolAddr(const std::string& name) {
     CHECK(!libcudart_.empty(), "libcudart empty!");
-    auto handle = dlopen(libcudart_.c_str(), RTLD_LAZY);
-    CHECK(handle, std::string("can't open ") + libcudart_);
-    return dlsym(handle, name.c_str());
+    handle_ = dlopen(libcudart_.c_str(), RTLD_LAZY);
+    CHECK(handle_, std::string("can't open ") + libcudart_);
+    return dlsym(handle_, name.c_str());
 }
 
 extern "C" CUresult cudaLaunchKernel_wrapper(const void* func, dim3 gridDim,

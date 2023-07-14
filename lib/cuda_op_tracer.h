@@ -1,3 +1,5 @@
+#pragma once
+
 #include <atomic>
 #include <string>
 #include <unordered_map>
@@ -12,6 +14,7 @@ class CudaInfoCollection {
     static CudaInfoCollection& instance();
     void collectRtLib(const std::string& lib);
     void* getSymbolAddr(const std::string& name);
+    ~CudaInfoCollection();
 
    private:
     std::string libcudart_;

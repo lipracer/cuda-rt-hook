@@ -267,6 +267,9 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         }
         LOG(0) << "replace:" << pltTable->symbol_table + idx << " with "
                << pltTable->symbol_table + idx << " success";
+        if (installer.onSuccess) {
+            installer.onSuccess();
+        }
         return 0;
     }
     return -1;

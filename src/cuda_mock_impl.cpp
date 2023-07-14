@@ -13,4 +13,10 @@ NB_MODULE(cuda_mock_impl, m) {
                                       const char* symbolName) {
         cuda_mock::internal_install_hook(srcLib, targetLib, symbolName);
     });
+    m.def("internal_install_hook",
+          [](const char* srcLib, const char* targetLib, const char* symbolName,
+             const char* hookerLibPath, const char* hookerSymbolName) {
+              cuda_mock::internal_install_hook(srcLib, targetLib, symbolName,
+                                               hookerLibPath, hookerSymbolName);
+          });
 }
