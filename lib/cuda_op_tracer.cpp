@@ -39,8 +39,12 @@ void CudaInfoCollection::collectRtLib(const std::string& lib) {
 void* CudaInfoCollection::getSymbolAddr(const std::string& name) {
     CHECK(!libcudart_.empty(), "libcudart empty!");
     handle_ = dlopen(libcudart_.c_str(), RTLD_LAZY);
-    CHECK(handle_, std::string("can't open ") + libcudart_);
+    CHECK(handle_, "can't open {}", libcudart_);
     return dlsym(handle_, name.c_str());
+}
+
+CudaInfoCollection::~CudaInfoCollection() {
+    dlclose(handle_);
 }
 
 extern "C" CUresult cudaLaunchKernel_wrapper(const void* func, dim3 gridDim,
@@ -68,7 +72,7 @@ bool BackTraceCollection::CallStackInfo::snapshot() {
     void* buffer[kMaxStackDeep] = {0};
     char** symbols = nullptr;
     int num = backtrace(buffer, kMaxStackDeep);
-    CHECK(num > 0, "Expect frams num {" + std::to_string(num) + "} > 0!");
+    CHECK(num > 0, "Expect frams num {} > 0!", num);
     symbols = backtrace_symbols(buffer, num);
     if (symbols == nullptr) {
         return false;

@@ -1,5 +1,7 @@
 #pragma once
 
+#define EXPORT __attribute__((__visibility__("default")))
+
 namespace cuda_mock {
 
 void initialize();

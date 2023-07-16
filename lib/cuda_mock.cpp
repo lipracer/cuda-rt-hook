@@ -4,7 +4,7 @@
 #include "cuda_op_tracer.h"
 #include "hook.h"
 #include "logger.h"
-#include "cuda_op_tracer.h"
+#include "cuda_mock.h"
 
 
 std::jmp_buf log_jump_buffer = {{0}};
@@ -44,7 +44,7 @@ void internal_install_hook(const char* srcLib, const char* targetLib,
     auto hookerAddr = reinterpret_cast<void*>(&__any_mock_func__);
     if (hookerLibPath) {
         auto handle = dlopen(hookerLibPath, RTLD_LAZY);
-        CHECK(handle, std::string("can't not dlopen ") + hookerLibPath);
+        CHECK(handle, "can't not dlopen {}", hookerLibPath);
         hookerAddr =
             dlsym(handle, hookerSymbolName ? hookerSymbolName : symbolName);
     }
