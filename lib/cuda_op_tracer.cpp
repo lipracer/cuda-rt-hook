@@ -44,7 +44,7 @@ void* CudaInfoCollection::getSymbolAddr(const std::string& name) {
 }
 
 CudaInfoCollection::~CudaInfoCollection() {
-    dlclose(handle_);
+    if (!!handle_) dlclose(handle_);
 }
 
 extern "C" CUresult cudaLaunchKernel_wrapper(const void* func, dim3 gridDim,
