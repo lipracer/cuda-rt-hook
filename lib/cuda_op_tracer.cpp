@@ -142,8 +142,8 @@ hook::HookInstaller getHookInstaller(const HookerInfo& info) {
     static const char* symbolName = "cudaLaunchKernel";
     static void* newFuncAddr = reinterpret_cast<void*>(&cudaLaunchKernel_wrapper);
     if (info.srcLib && info.targeLib && info.symbolName && info.newFuncPtr) {
-        kPytorchCudaLibName = info.srcLib;
-        kCudaRTLibName = info.targeLib;
+        kCudaRTLibName = info.srcLib;
+        kPytorchCudaLibName = info.targeLib;
         symbolName = info.symbolName;
         newFuncAddr = info.newFuncPtr;
     }
