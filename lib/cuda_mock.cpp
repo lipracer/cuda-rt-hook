@@ -13,8 +13,8 @@ std::jmp_buf log_jump_buffer = {{0}};
 namespace cuda_mock {
 
 void initialize() {
-    LOG(0) << "initialize";
-    hook::HookInstaller hookInstaller = tracer::getHookInstaller();
+    LOG(INFO) << "initialize";
+    hook::HookInstaller hookInstaller = trace::getHookInstaller();
     hook::install_hook(hookInstaller);
     // hook::install_hook();
 }
@@ -22,7 +22,7 @@ void initialize() {
 static void* oldFuncAddr = nullptr;
 
 void log_router(const char* name) {
-    LOG(0) << name << ":" << oldFuncAddr;
+    LOG(INFO) << name << ":" << oldFuncAddr;
     longjmp(log_jump_buffer, 1);
 }
 
@@ -39,8 +39,8 @@ void __any_mock_func__() {
 void internal_install_hook(const char* srcLib, const char* targetLib,
                            const char* symbolName, const char* hookerLibPath,
                            const char* hookerSymbolName) {
-    LOG(0) << "initialize srcLib:" << srcLib << " targetLib:" << targetLib
-           << " symbolName:" << symbolName;
+    LOG(INFO) << "initialize srcLib:" << srcLib << " targetLib:" << targetLib
+              << " symbolName:" << symbolName;
     auto hookerAddr = reinterpret_cast<void*>(&__any_mock_func__);
     if (hookerLibPath) {
         auto handle = dlopen(hookerLibPath, RTLD_LAZY);
@@ -50,14 +50,14 @@ void internal_install_hook(const char* srcLib, const char* targetLib,
     }
     CHECK(hookerAddr, "hookerAddr can't be empty!");
     hook::HookInstaller hookInstaller =
-        tracer::getHookInstaller(tracer::HookerInfo{.srcLib = srcLib,
-                                                    .targeLib = targetLib,
-                                                    .symbolName = symbolName,
-                                                    .newFuncPtr = hookerAddr});
+        trace::getHookInstaller(trace::HookerInfo{.srcLib = srcLib,
+                                                  .targeLib = targetLib,
+                                                  .symbolName = symbolName,
+                                                  .newFuncPtr = hookerAddr});
     hookInstaller.onSuccess = [&]() {
         oldFuncAddr =
-            tracer::CudaInfoCollection::instance().getSymbolAddr(symbolName);
-        LOG(0) << __func__ << ":" << oldFuncAddr;
+            trace::CudaInfoCollection::instance().getSymbolAddr(symbolName);
+        LOG(INFO) << __func__ << ":" << oldFuncAddr;
     };
     hook::install_hook(hookInstaller);
 }

@@ -227,7 +227,7 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
     CHECK(installer.isTargetLib, "isTargetLib can't be empty!");
     CHECK(installer.isTargetSymbol, "isTargetSymbol can't be empty!");
     CHECK(installer.newFuncPtr, "new_func_ptr can't be empty!");
-    LOG(0) << "install lib name:" << pltTable->lib_name;
+    LOG(INFO) << "install lib name:" << pltTable->lib_name;
     if (!installer.isTargetLib(pltTable->lib_name.c_str())) {
         return -1;
     }
@@ -265,8 +265,8 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         if (!(prot & PROT_WRITE)) {
             mprotect(ALIGN_ADDR(addr), page_size, prot);
         }
-        LOG(0) << "replace:" << pltTable->symbol_table + idx << " with "
-               << pltTable->symbol_table + idx << " success";
+        LOG(INFO) << "replace:" << pltTable->symbol_table + idx << " with "
+                  << pltTable->symbol_table + idx << " success";
         if (installer.onSuccess) {
             installer.onSuccess();
         }
@@ -339,7 +339,7 @@ void* dlopen_wrapper(const char* pathname, int mode) {
 // void* dlsym_wrapper(void* handle, const char* symbol) {
 //     auto ret = dlsym(handle, symbol);
 //     if (std::string(symbol).find("cudaLaunchKernel") != std::string::npos) {
-//         LOG(0) << "replace cudaLaunchKernel!";
+//         LOG(INFO) << "replace cudaLaunchKernel!";
 //         auto new_func = reinterpret_cast<void*>(&cudaLaunchKernel_wrapper);
 //         function_map[new_func] = ret;
 //         return new_func;
@@ -352,7 +352,7 @@ void install_hook(const HookInstaller& installer) {
 
     std::vector<PltTable> vecPltTable;
     dl_iterate_phdr(retrieve_dyn_lib, &vecPltTable);
-    LOG(0) << "collect plt table size:" << vecPltTable.size();
+    LOG(INFO) << "collect plt table size:" << vecPltTable.size();
     {
         for (auto& pltTable : vecPltTable) {
             (void)install_hooker(&pltTable, installer);

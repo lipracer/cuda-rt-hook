@@ -97,6 +97,11 @@ inline std::string format(const char(&str)[N], Args&&... args) {
 
 }  // namespace logger
 
+#define INFO logger::LogLevel::info
+#define DEBUG logger::LogLevel::debug
+#define WARN logger::LogLevel::warning
+#define ERROR logger::LogLevel::error
+
 #define LOG(level)                                                            \
     !LOG_CONDITATION(level) ? void(0)                                         \
                             : logger::StreamPlaceHolder() <                   \
@@ -111,4 +116,10 @@ inline std::string format(const char(&str)[N], Args&&... args) {
             std::cerr << __FILE__ << ":" << __LINE__ << std::endl; \
             throw std::runtime_error(logger::format(__VA_ARGS__)); \
         }                                                          \
-    } while (0);
+    } while (0)
+
+#define CHECK_LT(l, r, ...) CHECK(((l) < (r)), __VA_ARGS__)
+#define CHECK_LE(l, r, ...) CHECK(((l) <= (r)), __VA_ARGS__)
+#define CHECK_GT(l, r, ...) CHECK(((l) > (r)), __VA_ARGS__)
+#define CHECK_GE(l, r, ...) CHECK(((l) >= (r)), __VA_ARGS__)
+#define CHECK_EQ(l, r, ...) CHECK(((l) == (r)), __VA_ARGS__)
