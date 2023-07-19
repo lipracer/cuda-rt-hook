@@ -339,7 +339,7 @@ void* dlopen_wrapper(const char* pathname, int mode) {
 // void* dlsym_wrapper(void* handle, const char* symbol) {
 //     auto ret = dlsym(handle, symbol);
 //     if (std::string(symbol).find("cudaLaunchKernel") != std::string::npos) {
-//         LOG(INFO) << "replace cudaLaunchKernel!";
+//         LOG(DEBUG) << "replace cudaLaunchKernel!";
 //         auto new_func = reinterpret_cast<void*>(&cudaLaunchKernel_wrapper);
 //         function_map[new_func] = ret;
 //         return new_func;

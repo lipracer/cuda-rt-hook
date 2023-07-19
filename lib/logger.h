@@ -23,6 +23,11 @@ class LogStream {
 
     LogLevel getLevel() const { return level_; }
 
+    const char* getStrLevel(LogLevel level) {
+        constexpr const char* str[] = {"INFO", "DEBUG", "WARN", "ERROR"};
+        return str[static_cast<int>(level)];
+    }
+
    private:
     LogLevel level_ = LogLevel::warning;
 };
@@ -38,7 +43,10 @@ static LogStream& operator<<(LogStream& s, const T& t) {
 }
 
 struct LogWrapper {
-    explicit LogWrapper(LogLevel level) : level_(level) {}
+    explicit LogWrapper(LogLevel level) : level_(level) {
+        LogStream::instance()
+            << "[" << LogStream::instance().getStrLevel(level) << "]";
+    }
     explicit LogWrapper(int level) : level_(static_cast<LogLevel>(level)) {}
     ~LogWrapper() {
         if (LOG_CONDITATION(level_)) {

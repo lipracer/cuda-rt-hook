@@ -11,7 +11,7 @@ class BackTraceCollection {
    public:
     class CallStackInfo {
        public:
-        static constexpr size_t kMaxStackDeep = 64;
+        static constexpr size_t kMaxStackDeep = 256;
 
         explicit CallStackInfo(
             const std::function<void*(const std::string&)>& getBaseAddr)

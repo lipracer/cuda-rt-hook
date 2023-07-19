@@ -50,19 +50,28 @@ static std::vector<std::string> exec_shell(const std::string& cmd) {
     LOG(INFO) << "exec_shell:" << cmd;
     auto pf = popen(cmd.c_str(), "r");
     if (!pf) {
+        LOG(WARN) << "popen cmd:" << cmd << "fail!";
         return {};
     }
     std::vector<std::string> results;
     while (true) {
-        constexpr size_t kMaxBufSize = 256;
+        constexpr size_t kMaxBufSize = 1024;
         std::string buf(kMaxBufSize, 0);
         if (!fgets(const_cast<char*>(buf.data()), kMaxBufSize, pf)) {
-            results.emplace_back(std::move(buf));
             break;
         }
+        // strip last '\n'
+        auto str_length = strlen(buf.c_str());
+        if (str_length > 0 && buf[str_length - 1] == '\n') {
+            buf[str_length - 1] = '\0';
+            str_length -= 1;
+        }
+        buf.resize(str_length);
+        LOG(INFO) << buf;
+        results.emplace_back(std::move(buf));
     }
     if (pclose(pf) == -1) {
-        LOG(INFO) << "exec_shell fail!";
+        LOG(WARN) << "exec_shell fail!";
         return {};
     }
     return results;
@@ -164,34 +173,35 @@ bool BackTraceCollection::CallStackInfo::parse() {
         //     continue;
         // }
         matchedInfo = parse_backtrace_line(line);
-        if (matchedInfo.symbol.empty()) {
-            continue;
-        }
         auto baseAddr = getBaseAddr_(matchedInfo.libName);
-        if (matchedInfo.textAddr.empty() && !baseAddr) {
+        if (matchedInfo.rtAddr.empty() || !baseAddr) {
             continue;
         }
-        if (matchedInfo.textAddr.empty()) {
-            size_t rtAddr = 0;
-            std::stringstream ss;
-            ss << matchedInfo.rtAddr;
-            ss >> rtAddr;
-            CHECK_LT(reinterpret_cast<size_t>(baseAddr), rtAddr,
-                     "runtime address:{} must less the lib base address{} !",
-                     reinterpret_cast<size_t>(baseAddr), rtAddr);
-            rtAddr -= reinterpret_cast<size_t>(baseAddr);
-            ss.clear();
-            ss.str("");
-            ss << std::hex << rtAddr;
-            ss >> matchedInfo.textAddr;
+        std::string textAddr;
+
+        size_t rtAddr = 0;
+        std::stringstream ss;
+        ss << std::hex << matchedInfo.rtAddr;
+        ss >> rtAddr;
+        if (reinterpret_cast<size_t>(baseAddr) >= rtAddr) {
+            continue;
         }
-        LOG(INFO) << "lib name:" << matchedInfo.libName;
-        LOG(INFO) << "parse addr:" << matchedInfo.textAddr;
-        auto lineInfo = addr2line(matchedInfo.libName, matchedInfo.textAddr);
+        rtAddr -= reinterpret_cast<size_t>(baseAddr);
+        ss.clear();
+        ss.str("");
+        ss << "0x" << std::hex << rtAddr;
+        ss >> textAddr;
+
+        if (textAddr != matchedInfo.textAddr) {
+            LOG(DEBUG) << line << " captured addr:" << matchedInfo.textAddr
+                       << " and calculated addr:" << textAddr << " mismatch!";
+        }
+
+        auto lineInfo = addr2line(matchedInfo.libName, textAddr);
         if (lineInfo.size() < 2) {
             continue;
         }
-        line = lineInfo[0] + "(" + lineInfo[1] + ") " + "[" +
+        line = lineInfo[1] + "(" + lineInfo[0] + ") " + "[" +
                matchedInfo.rtAddr + "]";
     }
     return true;
@@ -221,21 +231,24 @@ void BackTraceCollection::collect_backtrace(const void* func_ptr) {
                         }),
                         size_t(0)));
     if (!std::get<0>(backtraces_.back()).snapshot()) {
-        LOG(2) << "can't get backtrace symbol!";
+        LOG(WARN) << "can't get backtrace symbol!";
     }
 }
 
 void BackTraceCollection::dump() {
-    std::ofstream ofs("./backtrace.log");
-
-    for (auto& stack_info : backtraces_) {
-        ofs << "ignore:[call " << std::get<1>(stack_info) << " times"
-            << "]\n";
-        std::get<0>(stack_info).parse();
-        ofs << std::get<0>(stack_info);
+    for (const auto& baseAddr : base_addrs_) {
+        LOG(WARN) << baseAddr.first << " base address:" << baseAddr.second
+                  << "\n";
     }
-    ofs.flush();
-    ofs.close();
+    for (auto& stack_info : backtraces_) {
+        LOG(WARN) << "ignore:[call " << std::get<1>(stack_info) << " times"
+                  << "]\n";
+        LOG(WARN) << std::get<0>(stack_info);
+        std::get<0>(stack_info).parse();
+        LOG(WARN) << "=========================parsed backtrace "
+                     "symbol=========================";
+        LOG(WARN) << std::get<0>(stack_info);
+    }
 }
 
 std::ostream& operator<<(std::ostream& os,

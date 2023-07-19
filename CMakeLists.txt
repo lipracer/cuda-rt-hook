@@ -5,7 +5,10 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
-add_compile_options(-Wall)
+add_compile_options(-Wall -Wextra -Wno-unused-parameter 
+-Wno-unused-function -Wno-unused-result -Wno-missing-field-initializers 
+-Wno-unknown-pragmas -Wno-type-limits -Wno-array-bounds -Wno-unknown-pragmas 
+-Wno-strict-overflow -Wno-strict-aliasing -Wno-missing-braces -Wno-maybe-uninitialized)
 
 if (NOT SKBUILD)
   message(WARNING "\
