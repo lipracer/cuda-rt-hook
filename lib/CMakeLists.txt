@@ -5,3 +5,6 @@ include_directories(PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 include_directories(PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/Backward-cpp)
 
 set_target_properties(cuda_mock PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_link_libraries(cuda_mock PRIVATE fmt::fmt-header-only)
+include_directories(PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/fmt/include)

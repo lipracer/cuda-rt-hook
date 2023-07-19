@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 
+add_compile_options(-Wall)
+
 if (NOT SKBUILD)
   message(WARNING "\
   This CMake file is meant to be executed using 'scikit-build-core'.
@@ -43,6 +45,10 @@ endif()
 # Detect the installed nanobind package and import it into CMake
 list(APPEND CMAKE_PREFIX_PATH "third_party/nanobind")
 find_package(nanobind CONFIG REQUIRED)
+
+# list(APPEND CMAKE_PREFIX_PATH "third_party/fmt")
+# find_package(fmt)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/nanobind)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src)

@@ -75,67 +75,126 @@ static std::vector<std::string> addr2line(const std::string& libName,
     return exec_shell(ss.str());
 }
 
-bool BackTraceCollection::CallStackInfo::parse() {
-    std::smatch m;
-    try {
-        std::regex e(R"((.*?)\((.*?)\+?(0[x|X].*?)\) \[(.*?)\])");
-        struct MatchedInfo {
-            std::string libName;
-            std::string symbol;
-            std::string textAddr;
-            std::string rtAddr;
-        };
+struct MatchedInfo {
+    std::string libName;
+    std::string symbol;
+    std::string textAddr;
+    std::string rtAddr;
+};
 
-        for (auto& line : backtrace_) {
-            MatchedInfo matchedInfo;
-            if (!std::regex_search(line, m, e)) {
-                LOG(WARN) << "backtrace has ilegal format line:" << line;
-                continue;
-            }
-            if (m.empty()) {
-                continue;
-            }
-            if (m.size() - 1 < sizeof(matchedInfo) / sizeof(std::string)) {
-                continue;
-            }
-            matchedInfo.libName = m[1];
-            matchedInfo.symbol = m[2];
-            matchedInfo.textAddr = m[3];
-            matchedInfo.rtAddr = m[4];
-            if (matchedInfo.symbol.empty()) {
-                continue;
-            }
-            auto baseAddr = getBaseAddr_(matchedInfo.libName);
-            if (matchedInfo.textAddr.empty() && !baseAddr) {
-                continue;
-            }
-            if (matchedInfo.textAddr.empty()) {
-                size_t rtAddr = 0;
-                std::stringstream ss;
-                ss << matchedInfo.rtAddr;
-                ss >> rtAddr;
-                CHECK_LT(reinterpret_cast<size_t>(baseAddr), rtAddr,
-                         "runtime address must less the lib base address!");
-                rtAddr -= reinterpret_cast<size_t>(baseAddr);
-                ss.clear();
-                ss.str() = "";
-                ss << std::hex << rtAddr;
-                ss >> matchedInfo.textAddr;
-            }
-            LOG(INFO) << "lib name:" << matchedInfo.libName;
-            LOG(INFO) << "parse addr:" << matchedInfo.textAddr;
-            auto lineInfo =
-                addr2line(matchedInfo.libName, matchedInfo.textAddr);
-            if (lineInfo.size() < 2) {
-                continue;
-            }
-            line = lineInfo[0] + "(" + lineInfo[1] + ") " + "[" +
-                   matchedInfo.rtAddr + "]";
+static MatchedInfo parse_backtrace_line(const std::string& line) {
+    MatchedInfo result;
+    std::pair<const char*, const char*> libRange;
+    std::pair<const char*, const char*> symbolRange;
+    std::pair<const char*, const char*> textAddrRange;
+    std::pair<const char*, const char*> rtAddrRange;
+    const char* ptr = line.c_str();
+    libRange.first = line.c_str();
+    while (*ptr) {
+        switch (*ptr) {
+            case '(': {
+                libRange.second = ptr;
+                symbolRange.first = ptr + 1;
+            } break;
+            case ')': {
+                if (symbolRange.second) {  // found +
+                    textAddrRange.second = ptr;
+                } else {
+                    symbolRange.second = ptr;
+                }
+            } break;
+            case '+': {
+                if (symbolRange.first) {
+                    symbolRange.second = ptr;
+                    textAddrRange.first = ptr + 1;
+                }
+            } break;
+            case '[': {
+                rtAddrRange.first = ptr + 1;
+            } break;
+            case ']': {
+                rtAddrRange.second = ptr;
+            } break;
         }
-
-    } catch (const std::exception& e) {
-        std::cerr << e.what() << '\n';
+        ++ptr;
     }
+    auto check_and_legal = [&](std::pair<const char*, const char*>& range) {
+        CHECK((range.first && range.second) || (!range.first && !range.second),
+              "parse fail:{}", line);
+        if (!range.first && !range.second) {
+            range.first = line.c_str();
+            range.second = line.c_str();
+        }
+    };
+    check_and_legal(libRange);
+    check_and_legal(symbolRange);
+    check_and_legal(textAddrRange);
+    check_and_legal(rtAddrRange);
+    result.libName = std::string(libRange.first, libRange.second);
+    result.symbol = std::string(symbolRange.first, symbolRange.second);
+    result.textAddr = std::string(textAddrRange.first, textAddrRange.second);
+    result.rtAddr = std::string(rtAddrRange.first, rtAddrRange.second);
+    return result;
+}
+
+bool BackTraceCollection::CallStackInfo::parse() {
+
+    // backtrace format lib_name(symbol_name(+add)?) [address]
+    for (auto& line : backtrace_) {
+        MatchedInfo matchedInfo;
+        // try {
+        //     std::smatch m;
+        //     std::regex e(R"((.*?)\((.*?)\+?(0[x|X].*?)\) \[(.*?)\])");
+        //     if (!std::regex_search(line, m, e)) {
+        //         LOG(WARN) << "backtrace has ilegal format line:" << line;
+        //         continue;
+        //     }
+        //     if (m.empty()) {
+        //         continue;
+        //     }
+        //     if (m.size() - 1 < sizeof(matchedInfo) / sizeof(std::string)) {
+        //         continue;
+        //     }
+        //     matchedInfo.libName = m[1].str();
+        //     matchedInfo.symbol = m[2].str();
+        //     matchedInfo.textAddr = m[3].str();
+        //     matchedInfo.rtAddr = m[4].str();
+        // } catch (const std::exception& e) {
+        //     std::cerr << e.what() << '\n';
+        //     continue;
+        // }
+        matchedInfo = parse_backtrace_line(line);
+        if (matchedInfo.symbol.empty()) {
+            continue;
+        }
+        auto baseAddr = getBaseAddr_(matchedInfo.libName);
+        if (matchedInfo.textAddr.empty() && !baseAddr) {
+            continue;
+        }
+        if (matchedInfo.textAddr.empty()) {
+            size_t rtAddr = 0;
+            std::stringstream ss;
+            ss << matchedInfo.rtAddr;
+            ss >> rtAddr;
+            CHECK_LT(reinterpret_cast<size_t>(baseAddr), rtAddr,
+                     "runtime address:{} must less the lib base address{} !",
+                     reinterpret_cast<size_t>(baseAddr), rtAddr);
+            rtAddr -= reinterpret_cast<size_t>(baseAddr);
+            ss.clear();
+            ss.str("");
+            ss << std::hex << rtAddr;
+            ss >> matchedInfo.textAddr;
+        }
+        LOG(INFO) << "lib name:" << matchedInfo.libName;
+        LOG(INFO) << "parse addr:" << matchedInfo.textAddr;
+        auto lineInfo = addr2line(matchedInfo.libName, matchedInfo.textAddr);
+        if (lineInfo.size() < 2) {
+            continue;
+        }
+        line = lineInfo[0] + "(" + lineInfo[1] + ") " + "[" +
+               matchedInfo.rtAddr + "]";
+    }
+    return true;
 }
 
 BackTraceCollection& BackTraceCollection::instance() {
