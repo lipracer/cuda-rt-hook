@@ -1,18 +1,20 @@
-#include <csetjmp>
+#include "cuda_mock.h"
+
 #include <dlfcn.h>
+
+#include <csetjmp>
 
 #include "cuda_op_tracer.h"
 #include "hook.h"
 #include "logger.h"
-#include "cuda_mock.h"
-
 
 std::jmp_buf log_jump_buffer = {{0}};
 
+#ifdef __cplusplus
 
-namespace cuda_mock {
+extern "C" {
 
-void initialize() {
+void dh_initialize() {
     LOG(INFO) << "initialize";
     hook::HookInstaller hookInstaller = trace::getHookInstaller();
     hook::install_hook(hookInstaller);
@@ -36,9 +38,9 @@ void __any_mock_func__() {
     // }
 }
 
-void internal_install_hook(const char* srcLib, const char* targetLib,
-                           const char* symbolName, const char* hookerLibPath,
-                           const char* hookerSymbolName) {
+void dh_internal_install_hook(const char* srcLib, const char* targetLib,
+                              const char* symbolName, const char* hookerLibPath,
+                              const char* hookerSymbolName) {
     LOG(INFO) << "initialize srcLib:" << srcLib << " targetLib:" << targetLib
               << " symbolName:" << symbolName;
     auto hookerAddr = reinterpret_cast<void*>(&__any_mock_func__);
@@ -61,5 +63,6 @@ void internal_install_hook(const char* srcLib, const char* targetLib,
     };
     hook::install_hook(hookInstaller);
 }
+}
 
-}  // namespace cuda_mock
+#endif

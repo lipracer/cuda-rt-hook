@@ -201,6 +201,11 @@ bool BackTraceCollection::CallStackInfo::parse() {
         if (lineInfo.size() < 2) {
             continue;
         }
+        if (lineInfo[0].find(matchedInfo.symbol) == std::string::npos) {
+            LOG(WARN) << "pased symbol name:" << lineInfo[0]
+                      << " vs original symbol:" << matchedInfo.symbol
+                      << " mismatch!";
+        }
         line = lineInfo[1] + "(" + lineInfo[0] + ") " + "[" +
                matchedInfo.rtAddr + "]";
     }

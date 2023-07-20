@@ -23,4 +23,4 @@ struct HookInstaller {
 
 void install_hook(const HookInstaller& installer);
 
-}  // namespace cuda_mock
+}  // namespace hook

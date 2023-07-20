@@ -2,13 +2,16 @@
 
 #define EXPORT __attribute__((__visibility__("default")))
 
-namespace cuda_mock {
+#ifdef __cplusplus
 
-void initialize();
+extern "C" {
 
-void internal_install_hook(const char* srcLib, const char* targetLib,
+void dh_initialize();
+
+void dh_internal_install_hook(const char* srcLib, const char* targetLib,
                            const char* symbolName,
                            const char* hookerLibPath = nullptr,
                            const char* hookerSymbolName = nullptr);
+}
 
-} // cuda_mock
+#endif
