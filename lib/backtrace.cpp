@@ -4,7 +4,9 @@
 #include <elf.h>
 #include <errno.h>
 #include <execinfo.h>
+#include <unistd.h>
 
+#include <algorithm>
 #include <fstream>
 #include <regex>
 
@@ -80,14 +82,30 @@ static std::vector<std::string> exec_shell(const std::string& cmd) {
 static std::vector<std::string> addr2line(const std::string& libName,
                                           const std::string& addr) {
     std::stringstream ss;
-    ss << "addr2line -e " << libName << " -f " << addr;
+    ss << "addr2line -e " << libName << " -f -C " << addr;
     return exec_shell(ss.str());
+}
+
+static std::string get_addr2line(const std::string& libName, size_t addr,
+                                 const std::string& rt_addr) {
+    std::stringstream ss;
+    std::string textAddr;
+    ss << "0x" << std::hex << addr;
+    ss >> textAddr;
+    auto result = addr2line(libName, textAddr);
+    if (result.size() < 2) {
+        return {};
+    }
+    if (result[0] == "??" && result[1] == "??:0") {
+        return {};
+    }
+    return result[1] + "(" + result[0] + ") " + "[" + rt_addr + "]";
 }
 
 struct MatchedInfo {
     std::string libName;
     std::string symbol;
-    std::string textAddr;
+    std::string offset;
     std::string rtAddr;
 };
 
@@ -95,7 +113,7 @@ static MatchedInfo parse_backtrace_line(const std::string& line) {
     MatchedInfo result;
     std::pair<const char*, const char*> libRange;
     std::pair<const char*, const char*> symbolRange;
-    std::pair<const char*, const char*> textAddrRange;
+    std::pair<const char*, const char*> offsetRange;
     std::pair<const char*, const char*> rtAddrRange;
     const char* ptr = line.c_str();
     libRange.first = line.c_str();
@@ -107,7 +125,7 @@ static MatchedInfo parse_backtrace_line(const std::string& line) {
             } break;
             case ')': {
                 if (symbolRange.second) {  // found +
-                    textAddrRange.second = ptr;
+                    offsetRange.second = ptr;
                 } else {
                     symbolRange.second = ptr;
                 }
@@ -115,7 +133,7 @@ static MatchedInfo parse_backtrace_line(const std::string& line) {
             case '+': {
                 if (symbolRange.first) {
                     symbolRange.second = ptr;
-                    textAddrRange.first = ptr + 1;
+                    offsetRange.first = ptr + 1;
                 }
             } break;
             case '[': {
@@ -137,11 +155,11 @@ static MatchedInfo parse_backtrace_line(const std::string& line) {
     };
     check_and_legal(libRange);
     check_and_legal(symbolRange);
-    check_and_legal(textAddrRange);
+    check_and_legal(offsetRange);
     check_and_legal(rtAddrRange);
     result.libName = std::string(libRange.first, libRange.second);
     result.symbol = std::string(symbolRange.first, symbolRange.second);
-    result.textAddr = std::string(textAddrRange.first, textAddrRange.second);
+    result.offset = std::string(offsetRange.first, offsetRange.second);
     result.rtAddr = std::string(rtAddrRange.first, rtAddrRange.second);
     return result;
 }
@@ -149,33 +167,41 @@ static MatchedInfo parse_backtrace_line(const std::string& line) {
 bool BackTraceCollection::CallStackInfo::parse() {
 
     // backtrace format lib_name(symbol_name(+add)?) [address]
+    std::vector<std::string> tmp_backtrace;
+    tmp_backtrace.reserve(backtrace_.size());
+#define push_and_continue()         \
+    tmp_backtrace.push_back(line); \
+    continue;
+
     for (auto& line : backtrace_) {
         MatchedInfo matchedInfo;
-        // try {
-        //     std::smatch m;
-        //     std::regex e(R"((.*?)\((.*?)\+?(0[x|X].*?)\) \[(.*?)\])");
-        //     if (!std::regex_search(line, m, e)) {
-        //         LOG(WARN) << "backtrace has ilegal format line:" << line;
-        //         continue;
-        //     }
-        //     if (m.empty()) {
-        //         continue;
-        //     }
-        //     if (m.size() - 1 < sizeof(matchedInfo) / sizeof(std::string)) {
-        //         continue;
-        //     }
-        //     matchedInfo.libName = m[1].str();
-        //     matchedInfo.symbol = m[2].str();
-        //     matchedInfo.textAddr = m[3].str();
-        //     matchedInfo.rtAddr = m[4].str();
-        // } catch (const std::exception& e) {
-        //     std::cerr << e.what() << '\n';
-        //     continue;
-        // }
+#if 0
+        try {
+            std::smatch m;
+            std::regex e(R"((.*?)\((.*?)\+?(0[x|X].*?)\) \[(.*?)\])");
+            if (!std::regex_search(line, m, e)) {
+                LOG(WARN) << "backtrace has ilegal format line:" << line;
+                push_and_continue();
+            }
+            if (m.empty()) {
+                push_and_continue();
+            }
+            if (m.size() - 1 < sizeof(matchedInfo) / sizeof(std::string)) {
+                push_and_continue();
+            }
+            matchedInfo.libName = m[1].str();
+            matchedInfo.symbol = m[2].str();
+            matchedInfo.textAddr = m[3].str();
+            matchedInfo.rtAddr = m[4].str();
+        } catch (const std::exception& e) {
+            std::cerr << e.what() << '\n';
+            push_and_continue();
+        }
+#endif
         matchedInfo = parse_backtrace_line(line);
         auto baseAddr = getBaseAddr_(matchedInfo.libName);
         if (matchedInfo.rtAddr.empty() || !baseAddr) {
-            continue;
+            push_and_continue();
         }
         std::string textAddr;
 
@@ -184,31 +210,35 @@ bool BackTraceCollection::CallStackInfo::parse() {
         ss << std::hex << matchedInfo.rtAddr;
         ss >> rtAddr;
         if (reinterpret_cast<size_t>(baseAddr) >= rtAddr) {
-            continue;
+            push_and_continue();
         }
         rtAddr -= reinterpret_cast<size_t>(baseAddr);
         ss.clear();
         ss.str("");
-        ss << "0x" << std::hex << rtAddr;
-        ss >> textAddr;
 
-        if (textAddr != matchedInfo.textAddr) {
-            LOG(DEBUG) << line << " captured addr:" << matchedInfo.textAddr
-                       << " and calculated addr:" << textAddr << " mismatch!";
+        auto parsed_line =
+            get_addr2line(matchedInfo.libName, rtAddr, matchedInfo.rtAddr);
+        if (!parsed_line.empty()) {
+            tmp_backtrace.push_back(parsed_line);
+        } else {
+            tmp_backtrace.push_back(line);
         }
 
-        auto lineInfo = addr2line(matchedInfo.libName, textAddr);
-        if (lineInfo.size() < 2) {
-            continue;
+        if (!matchedInfo.offset.empty()) {
+            size_t offset = 0;
+            ss << std::hex << matchedInfo.offset;
+            ss >> offset;
+            rtAddr -= offset;
+            ss.clear();
+            ss.str("");
         }
-        if (lineInfo[0].find(matchedInfo.symbol) == std::string::npos) {
-            LOG(WARN) << "pased symbol name:" << lineInfo[0]
-                      << " vs original symbol:" << matchedInfo.symbol
-                      << " mismatch!";
+        auto parsed_offset_line =
+            get_addr2line(matchedInfo.libName, rtAddr, matchedInfo.rtAddr);
+        if (!parsed_offset_line.empty()) {
+            tmp_backtrace.push_back(parsed_offset_line);
         }
-        line = lineInfo[1] + "(" + lineInfo[0] + ") " + "[" +
-               matchedInfo.rtAddr + "]";
     }
+    backtrace_.swap(tmp_backtrace);
     return true;
 }
 
@@ -219,28 +249,73 @@ BackTraceCollection& BackTraceCollection::instance() {
 
 void BackTraceCollection::collect_backtrace(const void* func_ptr) {
     auto iter = cached_map_.find(func_ptr);
-
     if (iter != cached_map_.end()) {
         ++std::get<1>(backtraces_[iter->second]);
         return;
     }
     cached_map_.insert(std::make_pair(func_ptr, backtraces_.size()));
 
-    backtraces_.emplace_back(
-        std::make_tuple(CallStackInfo([this](const std::string& name) -> void* {
-                            auto iter = base_addrs_.find(name);
-                            if (iter == base_addrs_.end()) {
-                                return nullptr;
-                            }
-                            return iter->second;
-                        }),
-                        size_t(0)));
+    backtraces_.emplace_back(std::make_tuple(
+        CallStackInfo(std::bind(&BackTraceCollection::getBaseAddr, this,
+                                std::placeholders::_1)),
+        size_t(0)));
     if (!std::get<0>(backtraces_.back()).snapshot()) {
         LOG(WARN) << "can't get backtrace symbol!";
     }
 }
 
+static std::vector<std::string> split_string(const std::string& str) {
+    std::vector<std::string> result;
+    std::stringstream ss;
+    ss << str;
+    std::copy(std::istream_iterator<std::string>(ss),
+              std::istream_iterator<std::string>(), std::back_inserter(result));
+    return result;
+}
+
+const void* BackTraceCollection::getBaseAddr(const std::string& name) {
+#if 1
+    auto iter = base_addrs_.find(name);
+    if (iter == base_addrs_.end()) {
+        return nullptr;
+    }
+    return iter->second;
+#else
+    auto it = link_maps_.begin();
+    for (; it != link_maps_.end(); ++it) {
+        if (it->find(name) != std::string::npos) {
+            break;
+        }
+    }
+    if (it == link_maps_.begin()) {
+        return nullptr;
+    }
+    it -= 1;
+    auto map_info = split_string(*it);
+    if (map_info.empty()) {
+        return nullptr;
+    }
+    auto pos = map_info[0].find("-");
+    if (pos == std::string::npos) {
+        return nullptr;
+    }
+    auto strBaseAddr = map_info[0].substr(0, pos);
+    std::stringstream ss;
+    ss << std::hex << strBaseAddr;
+    size_t baseAddr = 0;
+    ss >> baseAddr;
+    return reinterpret_cast<void*>(baseAddr);
+#endif
+}
+
+void BackTraceCollection::parse_link_map() {
+    char cmd[64] = {0};
+    sprintf(cmd, "cat /proc/%d/maps", getpid());
+    link_maps_ = exec_shell(cmd);
+}
+
 void BackTraceCollection::dump() {
+    parse_link_map();
     for (const auto& baseAddr : base_addrs_) {
         LOG(WARN) << baseAddr.first << " base address:" << baseAddr.second
                   << "\n";

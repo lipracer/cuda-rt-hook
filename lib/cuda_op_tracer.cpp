@@ -80,7 +80,6 @@ hook::HookInstaller getHookInstaller(const HookerInfo& info) {
     }
     hook::HookInstaller installer;
     installer.isTargetLib = [](const char* libName) -> bool {
-        LOG(INFO) << "visit lib:" << libName;
         CudaInfoCollection::instance().collectRtLib(libName);
         if (std::string(libName).find(kPytorchCudaLibName) !=
             std::string::npos) {

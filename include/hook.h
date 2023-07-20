@@ -10,7 +10,8 @@ void install_hook();
 
 struct OriginalInfo {
     const char* libName = nullptr;
-    void* basePtr = nullptr;
+    const void* basePtr = nullptr;
+    void* relaPtr = nullptr;
     void* oldFuncPtr = nullptr;
 };
 

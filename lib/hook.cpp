@@ -142,14 +142,15 @@
 
 struct PltTable {
     std::string lib_name;
-    char* base_addr = nullptr;
+    const char* base_addr = nullptr;
+    char* base_header_addr = nullptr;
     ElfW(Sym) * dynsym = nullptr;
     ElfW(Rel) * rela_dyn = nullptr;
     ElfW(Rela) * rela_plt = nullptr;
     size_t rela_plt_cnt = 0;
     char* symbol_table = nullptr;
     // Elf_Plt_Rel
-    operator bool() const { return !!base_addr && !!rela_plt_cnt; }
+    operator bool() const { return !!base_header_addr && !!rela_plt_cnt; }
     bool operator!() const { return (bool)(*this); }
 };
 
@@ -227,7 +228,6 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
     CHECK(installer.isTargetLib, "isTargetLib can't be empty!");
     CHECK(installer.isTargetSymbol, "isTargetSymbol can't be empty!");
     CHECK(installer.newFuncPtr, "new_func_ptr can't be empty!");
-    LOG(INFO) << "install lib name:" << pltTable->lib_name;
     if (!installer.isTargetLib(pltTable->lib_name.c_str())) {
         return -1;
     }
@@ -245,7 +245,7 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
             continue;
         }
         void* addr =
-            reinterpret_cast<void*>(pltTable->base_addr + plt->r_offset);
+            reinterpret_cast<void*>(pltTable->base_header_addr + plt->r_offset);
         int prot = get_memory_permission(addr);
         if (prot == 0) {
             return -1;
@@ -259,6 +259,7 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         hook::OriginalInfo originalInfo;
         originalInfo.libName = pltTable->lib_name.c_str();
         originalInfo.basePtr = pltTable->base_addr;
+        originalInfo.relaPtr = pltTable->rela_plt;
         originalInfo.oldFuncPtr = addr;
         *reinterpret_cast<size_t*>(addr) =
             reinterpret_cast<size_t>(installer.newFuncPtr(originalInfo));
@@ -280,8 +281,14 @@ int retrieve_dyn_lib(struct dl_phdr_info* info, size_t info_size, void* table) {
     auto* vecPltTable = reinterpret_cast<VecTable*>(table);
     PltTable pltTable;
     pltTable.lib_name = info->dlpi_name ? info->dlpi_name : "";
-    pltTable.base_addr = (char*)info->dlpi_phdr - info_size;
+    pltTable.base_header_addr = (char*)info->dlpi_phdr - info_size;
+    pltTable.base_addr = reinterpret_cast<const char*>(info->dlpi_addr);
+    // pltTable.base_addr = pltTable.base_header_addr;
     ElfW(Dyn*) dyn;
+    LOG(INFO) << "install lib name:" << pltTable.lib_name
+              << " base addr:" << std::hex
+              << reinterpret_cast<void*>(info->dlpi_addr)
+              << " info_size:" << info_size;
     for (size_t header_index = 0; header_index < info->dlpi_phnum;
          header_index++) {
         if (info->dlpi_phdr[header_index].p_type == PT_DYNAMIC) {
