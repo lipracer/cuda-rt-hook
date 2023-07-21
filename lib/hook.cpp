@@ -286,8 +286,10 @@ int retrieve_dyn_lib(struct dl_phdr_info* info, size_t info_size, void* table) {
     // pltTable.base_addr = pltTable.base_header_addr;
     ElfW(Dyn*) dyn;
     LOG(INFO) << "install lib name:" << pltTable.lib_name
-              << " base addr:" << std::hex
+              << " dlpi_addr:" << std::hex
               << reinterpret_cast<void*>(info->dlpi_addr)
+              << " dlpi_phdr:" << std::hex
+              << reinterpret_cast<const void*>(info->dlpi_phdr)
               << " info_size:" << info_size;
     for (size_t header_index = 0; header_index < info->dlpi_phnum;
          header_index++) {

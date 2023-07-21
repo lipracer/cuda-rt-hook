@@ -274,7 +274,7 @@ static std::vector<std::string> split_string(const std::string& str) {
 }
 
 const void* BackTraceCollection::getBaseAddr(const std::string& name) {
-#if 1
+#if 0
     auto iter = base_addrs_.find(name);
     if (iter == base_addrs_.end()) {
         return nullptr;
@@ -290,7 +290,8 @@ const void* BackTraceCollection::getBaseAddr(const std::string& name) {
     if (it == link_maps_.begin()) {
         return nullptr;
     }
-    it -= 1;
+    // link map, first item is base address or second?
+    // it -= 1;
     auto map_info = split_string(*it);
     if (map_info.empty()) {
         return nullptr;
