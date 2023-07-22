@@ -8,6 +8,38 @@ namespace logger {
 
 enum class LogLevel { info = 0, debug, warning, error };
 
+struct StringLiteralBase {
+    constexpr StringLiteralBase(size_t N) { MN = MN > N ? MN : N; }
+    static size_t MN;
+};
+
+template <size_t N>
+struct StringLiteral : public StringLiteralBase {
+    constexpr StringLiteral(const char (&str)[N]) : StringLiteralBase(N) {
+        for (size_t i = 0; i < N; ++i) {
+            str_[i] = str[i];
+        }
+    }
+
+    char str_[N];
+
+    constexpr auto simpleFile() const {
+        for (int i = N - 1; i > 0; --i) {
+            if (str_[i] == '/') {
+                return str_ + i + 1;
+            }
+        }
+        return str_;
+    }
+};
+
+template <size_t N>
+constexpr std::ostream& operator<<(std::ostream& os,
+                                   const StringLiteral<N>& str) {
+    os << str.str_;
+    return os;
+}
+
 class LogStream {
    public:
     static LogStream& instance();
@@ -68,18 +100,6 @@ class StreamPlaceHolder {};
 
 static void operator<(const StreamPlaceHolder&, const LogWrapper&) {}
 
-static constexpr const char* __SimpleFileName__(const char* file) {
-    const char* first = file;
-    const char* second = file;
-    while (*second) {
-        if (*second == '/') {
-            first = second;
-        }
-        ++second;
-    }
-    return first + 1;
-}
-
 
 }  // namespace logger
 
@@ -88,13 +108,13 @@ static constexpr const char* __SimpleFileName__(const char* file) {
 #define WARN logger::LogLevel::warning
 #define ERROR logger::LogLevel::error
 
-#define LOG(level)                                                            \
-    !LOG_CONDITATION(level) ? void(0)                                         \
-                            : logger::StreamPlaceHolder() <                   \
-                                  logger::LogWrapper(level)                   \
-                                      << "["                                  \
-                                      << logger::__SimpleFileName__(__FILE__) \
-                                      << ":" << __LINE__ << "]"
+#define LOG(level)                                                       \
+    !LOG_CONDITATION(level)                                              \
+        ? void(0)                                                        \
+        : logger::StreamPlaceHolder() <                                  \
+              logger::LogWrapper(level)                                  \
+                  << "[" << logger::StringLiteral(__FILE__).simpleFile() \
+                  << ":" << __LINE__ << "]"
 
 #define CHECK(p, ...)                                              \
     do {                                                           \
