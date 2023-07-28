@@ -240,7 +240,7 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
 
         size_t idx = ELF64_R_SYM(plt->r_info);
         idx = pltTable->dynsym[idx].st_name;
-        // printf("enum func name:%s\n", pltTable->symbol_table + idx);
+        LOG(INFO) << pltTable->symbol_table + idx;
         if (!installer.isTargetSymbol(pltTable->symbol_table + idx)) {
             continue;
         }
