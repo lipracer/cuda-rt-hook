@@ -165,7 +165,9 @@ static MatchedInfo parse_backtrace_line(const std::string& line) {
 }
 
 bool BackTraceCollection::CallStackInfo::parse() {
-
+    if (!getBaseAddr_) {
+        return false;
+    }
     // backtrace format lib_name(symbol_name(+add)?) [address]
     std::vector<std::string> tmp_backtrace;
     tmp_backtrace.reserve(backtrace_.size());
@@ -316,6 +318,9 @@ void BackTraceCollection::parse_link_map() {
 }
 
 void BackTraceCollection::dump() {
+    if (backtraces_.empty()) {
+        return;
+    }
     parse_link_map();
     for (const auto& baseAddr : base_addrs_) {
         LOG(WARN) << baseAddr.first << " base address:" << baseAddr.second
@@ -325,7 +330,9 @@ void BackTraceCollection::dump() {
         LOG(WARN) << "ignore:[call " << std::get<1>(stack_info) << " times"
                   << "]\n";
         LOG(WARN) << std::get<0>(stack_info);
-        std::get<0>(stack_info).parse();
+        if  (!std::get<0>(stack_info).parse()) {
+            LOG(WARN) << "parse fail!";
+        }
         LOG(WARN) << "=========================parsed backtrace "
                      "symbol=========================";
         LOG(WARN) << std::get<0>(stack_info);

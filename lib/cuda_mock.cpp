@@ -4,6 +4,7 @@
 
 #include <csetjmp>
 
+#include "backtrace.h"
 #include "cuda_op_tracer.h"
 #include "hook.h"
 #include "logger.h"
@@ -23,19 +24,27 @@ void dh_initialize() {
 
 static void* oldFuncAddr = nullptr;
 
-void log_router(const char* name) {
-    LOG(INFO) << name << ":" << oldFuncAddr;
+void log_router() {
+    LOG(INFO) << __func__ << ":" << oldFuncAddr;
+    // sometime will crash
+    // trace::BackTraceCollection::CallStackInfo tracer({});
+    // tracer.snapshot();
+    // LOG(WARN) << tracer;
     longjmp(log_jump_buffer, 1);
 }
 
-void __any_mock_func__() {
+void __attribute__((optimize("O0"))) __any_mock_func__() {
     // why need not pop rbp, inline??
     // asm volatile("pop %rbp");
+    asm volatile("push %rax");
+    asm volatile("push %rdi");
+    if (!setjmp(log_jump_buffer)) {
+        log_router();
+    }
+    asm volatile("pop %rdi");
+    asm volatile("pop %rax");
+    asm volatile("add    $0x8,%rsp");
     asm volatile("jmp *%0" : : "r"(oldFuncAddr));
-    // asm volatile("ret");
-    // if (!setjmp(log_jump_buffer)) {
-    //     log_router(__func__);
-    // }
 }
 
 void dh_internal_install_hook(const char* srcLib, const char* targetLib,

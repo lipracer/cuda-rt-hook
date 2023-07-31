@@ -114,7 +114,7 @@ static void operator<(const StreamPlaceHolder&, const LogWrapper&) {}
         : logger::StreamPlaceHolder() <                                  \
               logger::LogWrapper(level)                                  \
                   << "[" << logger::StringLiteral(__FILE__).simpleFile() \
-                  << ":" << __LINE__ << "]"
+                  << ":" << std::dec << __LINE__ << "]"
 
 #define CHECK(p, ...)                                              \
     do {                                                           \
