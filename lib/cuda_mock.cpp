@@ -47,12 +47,27 @@ void __attribute__((optimize("O0"))) __any_mock_func__() {
     asm volatile("jmp *%0" : : "r"(oldFuncAddr));
 }
 
+int builtin_printf(int flag, const char* fmt, va_list argp) {
+    constexpr size_t kMax = 1024;
+    char buf[kMax] = {"myprintf "};
+    snprintf(buf + strlen(buf), kMax - strlen(buf), fmt, argp);
+    LOG(DEBUG) << buf;
+    return 0;
+}
+
+static std::unordered_map<std::string, void*> gBuiltinFuncs = {
+    {"__printf_chk", reinterpret_cast<void*>(&builtin_printf)},
+};
+
 void dh_internal_install_hook(const char* srcLib, const char* targetLib,
                               const char* symbolName, const char* hookerLibPath,
                               const char* hookerSymbolName) {
     LOG(INFO) << "initialize srcLib:" << srcLib << " targetLib:" << targetLib
               << " symbolName:" << symbolName;
-    auto hookerAddr = reinterpret_cast<void*>(&__any_mock_func__);
+    auto iter = gBuiltinFuncs.find(symbolName);
+    auto hookerAddr = iter == gBuiltinFuncs.end()
+                          ? reinterpret_cast<void*>(&__any_mock_func__)
+                          : iter->second;
     if (hookerLibPath) {
         auto handle = dlopen(hookerLibPath, RTLD_LAZY);
         CHECK(handle, "can't not dlopen {}", hookerLibPath);

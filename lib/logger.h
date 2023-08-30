@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdlib>
-#include <iostream>
+#include <sstream>
 #include "fmt/core.h"
 
 namespace logger {
@@ -51,7 +51,7 @@ class LogStream {
         }
     }
 
-    void flush() { std::cout << std::endl; }
+    void flush();
 
     LogLevel getLevel() const { return level_; }
 
@@ -60,8 +60,12 @@ class LogStream {
         return str[static_cast<int>(level)];
     }
 
+    template <typename T>
+    friend LogStream& operator<<(LogStream& s, T&& t);
+
    private:
     LogLevel level_ = LogLevel::warning;
+    std::stringstream ss_;
 };
 
 #define LOG_CONDITATION(level)    \
@@ -69,8 +73,8 @@ class LogStream {
      static_cast<int>(logger::LogStream::instance().getLevel()))
 
 template <typename T>
-static LogStream& operator<<(LogStream& s, const T& t) {
-    std::cout << t;
+LogStream& operator<<(LogStream& s, T&& t) {
+    s.ss_ << std::forward<T>(t);
     return s;
 }
 
@@ -89,9 +93,9 @@ struct LogWrapper {
 };
 
 template <typename T>
-static const LogWrapper& operator<<(const LogWrapper& s, const T& t) {
+static const LogWrapper& operator<<(const LogWrapper& s, T&& t) {
     if (LOG_CONDITATION(s.level_)) {
-        LogStream::instance() << t;
+        LogStream::instance() << std::forward<T>(t);
     }
     return s;
 }
@@ -99,7 +103,6 @@ static const LogWrapper& operator<<(const LogWrapper& s, const T& t) {
 class StreamPlaceHolder {};
 
 static void operator<(const StreamPlaceHolder&, const LogWrapper&) {}
-
 
 }  // namespace logger
 
@@ -116,12 +119,12 @@ static void operator<(const StreamPlaceHolder&, const LogWrapper&) {}
                   << "[" << logger::StringLiteral(__FILE__).simpleFile() \
                   << ":" << std::dec << __LINE__ << "]"
 
-#define CHECK(p, ...)                                              \
-    do {                                                           \
-        if (!(p)) {                                                \
-            std::cerr << __FILE__ << ":" << __LINE__ << std::endl; \
-            throw std::runtime_error(fmt::format(__VA_ARGS__));    \
-        }                                                          \
+#define CHECK(p, ...)                                           \
+    do {                                                        \
+        if (!(p)) {                                             \
+            LOG(ERROR) << __FILE__ << ":" << __LINE__;          \
+            throw std::runtime_error(fmt::format(__VA_ARGS__)); \
+        }                                                       \
     } while (0)
 
 #define CHECK_LT(l, r, ...) CHECK(((l) < (r)), __VA_ARGS__)
