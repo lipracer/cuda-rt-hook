@@ -24,4 +24,6 @@ struct HookInstaller {
 
 void install_hook(const HookInstaller& installer);
 
+void uninstall_hook(const HookInstaller& installer);
+
 }  // namespace hook

@@ -1,15 +1,15 @@
 #include "cuda_mock.h"
 
 #include <dlfcn.h>
-
 #include <csetjmp>
+#include <string.h>
 
 #include "backtrace.h"
 #include "cuda_op_tracer.h"
 #include "hook.h"
 #include "logger.h"
 
-std::jmp_buf log_jump_buffer = {{0}};
+std::jmp_buf log_jump_buffer = {{}};
 
 #ifdef __cplusplus
 
@@ -33,7 +33,7 @@ void log_router() {
     longjmp(log_jump_buffer, 1);
 }
 
-void __attribute__((optimize("O0"))) __any_mock_func__() {
+void __any_mock_func__() {
     // why need not pop rbp, inline??
     // asm volatile("pop %rbp");
     asm volatile("push %rax");

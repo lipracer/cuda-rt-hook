@@ -369,4 +369,8 @@ void install_hook(const HookInstaller& installer) {
     }
 }
 
+void uninstall_hook(const HookInstaller& installer) {
+    CHECK(false, "TODO");
+}
+
 }  // namespace hook

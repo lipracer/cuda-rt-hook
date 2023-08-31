@@ -2,14 +2,24 @@
 
 #include <cstdlib>
 #include <sstream>
+#ifndef HAS_NOT_FMT_LIB
 #include "fmt/core.h"
+#endif
+
+#ifdef HAS_NOT_FMT_LIB
+#define __FMT_FUNC__(...) "unsupport fmt!"
+#else
+#define __FMT_FUNC__(...) fmt::format(__VA_ARGS__)
+#endif
 
 namespace logger {
 
 enum class LogLevel { info = 0, debug, warning, error };
 
 struct StringLiteralBase {
-    constexpr StringLiteralBase(size_t N) { MN = MN > N ? MN : N; }
+    constexpr StringLiteralBase(size_t N) {
+        // MN = MN > N ? MN : N;
+    }
     static size_t MN;
 };
 
@@ -32,6 +42,11 @@ struct StringLiteral : public StringLiteralBase {
         return str_;
     }
 };
+
+template <size_t N>
+constexpr static auto makeStringLiteral(const char (&str)[N]) {
+    return StringLiteral<N>(str);
+}
 
 template <size_t N>
 constexpr std::ostream& operator<<(std::ostream& os,
@@ -111,20 +126,20 @@ static void operator<(const StreamPlaceHolder&, const LogWrapper&) {}
 #define WARN logger::LogLevel::warning
 #define ERROR logger::LogLevel::error
 
-#define LOG(level)                                                       \
-    !LOG_CONDITATION(level)                                              \
-        ? void(0)                                                        \
-        : logger::StreamPlaceHolder() <                                  \
-              logger::LogWrapper(level)                                  \
-                  << "[" << logger::StringLiteral(__FILE__).simpleFile() \
+#define LOG(level)                                                           \
+    !LOG_CONDITATION(level)                                                  \
+        ? void(0)                                                            \
+        : logger::StreamPlaceHolder() <                                      \
+              logger::LogWrapper(level)                                      \
+                  << "[" << logger::makeStringLiteral(__FILE__).simpleFile() \
                   << ":" << std::dec << __LINE__ << "]"
 
-#define CHECK(p, ...)                                           \
-    do {                                                        \
-        if (!(p)) {                                             \
-            LOG(ERROR) << __FILE__ << ":" << __LINE__;          \
-            throw std::runtime_error(fmt::format(__VA_ARGS__)); \
-        }                                                       \
+#define CHECK(p, ...)                                            \
+    do {                                                         \
+        if (!(p)) {                                              \
+            LOG(ERROR) << __FILE__ << ":" << __LINE__;           \
+            throw std::runtime_error(__FMT_FUNC__(__VA_ARGS__)); \
+        }                                                        \
     } while (0)
 
 #define CHECK_LT(l, r, ...) CHECK(((l) < (r)), __VA_ARGS__)
