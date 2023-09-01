@@ -289,7 +289,7 @@ const void* BackTraceCollection::getBaseAddr(const std::string& name) {
             break;
         }
     }
-    if (it == link_maps_.begin()) {
+    if (it == link_maps_.end()) {
         return nullptr;
     }
     // link map, first item is base address or second?
