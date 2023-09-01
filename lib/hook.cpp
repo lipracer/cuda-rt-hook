@@ -260,7 +260,8 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         originalInfo.libName = pltTable->lib_name.c_str();
         originalInfo.basePtr = pltTable->base_addr;
         originalInfo.relaPtr = pltTable->rela_plt;
-        originalInfo.oldFuncPtr = addr;
+        originalInfo.oldFuncPtr =
+            reinterpret_cast<void*>(*reinterpret_cast<size_t*>(addr));
         *reinterpret_cast<size_t*>(addr) =
             reinterpret_cast<size_t>(installer.newFuncPtr(originalInfo));
         if (!(prot & PROT_WRITE)) {
@@ -271,7 +272,6 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         if (installer.onSuccess) {
             installer.onSuccess();
         }
-        return 0;
     }
     return -1;
 }
@@ -340,6 +340,13 @@ namespace hook {
 std::unordered_map<void*, void*> function_map;
 
 // std::unordered_map<std::string, std::vector<void*>>
+
+std::ostream& operator<<(std::ostream& os, const OriginalInfo& info) {
+    os << "OriginalInfo:";
+    os << "\nlibName:" << info.libName << "\nbasePtr:" << info.basePtr
+       << "\nrelaPtr:" << info.relaPtr << "\noldFuncPtr:" << info.oldFuncPtr;
+    return os;
+}
 
 void* dlopen_wrapper(const char* pathname, int mode) {
     return dlopen(pathname, mode);

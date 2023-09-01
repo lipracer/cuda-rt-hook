@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <iosfwd>
 
 namespace hook {
 /**
@@ -14,6 +15,8 @@ struct OriginalInfo {
     void* relaPtr = nullptr;
     void* oldFuncPtr = nullptr;
 };
+
+std::ostream& operator<<(std::ostream& os, const OriginalInfo& info);
 
 struct HookInstaller {
     std::function<bool(const char*)> isTargetLib;

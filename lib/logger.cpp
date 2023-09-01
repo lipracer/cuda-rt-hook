@@ -25,17 +25,17 @@ class LogConsumer {
 
     void print() {
         while (!exit_) {
-            {
+            if (buf_.empty()) {
+                std::this_thread::yield();
+                continue;
+            } else {
                 mtx_.lock();
-                if (buf_.empty()) {
-                    mtx_.unlock();
-                    std::this_thread::yield();
-                    continue;
-                }
+                std::string str = std::move(buf_.front());
+                buf_.pop_front();
                 mtx_.unlock();
+
+                std::cout << str << std::endl;
             }
-            std::cout << buf_.front() << std::endl;
-            buf_.pop_front();
             std::this_thread::yield();
         }
     }
