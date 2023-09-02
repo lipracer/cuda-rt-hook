@@ -3,8 +3,9 @@ cmake_minimum_required(VERSION 3.18...3.22)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# set(CMAKE_BUILD_TYPE RelWithDebInfo)
+if(NOT DEFINED CMAKE_BUILD_TYPE)
 set(CMAKE_BUILD_TYPE Release)
+endif()
 
 add_compile_options(-Wall -Wextra -Wno-unused-parameter 
 -Wno-unused-function -Wno-unused-result -Wno-missing-field-initializers 
@@ -62,3 +63,19 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib)
 # Install directive for scikit-build-core
 install(TARGETS cuda_mock_impl LIBRARY DESTINATION cuda_mock)
 target_link_libraries(cuda_mock_impl LINK_PUBLIC ${Boost_LIBRARIES})
+
+################################
+# GTest
+################################
+enable_testing()
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest)
+
+add_executable(UnitTest 
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/test_logger.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/string_ring_buffer.cpp
+)
+target_link_libraries(UnitTest gtest gtest_main plthook)
+
+target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/googletest/include)
+target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt/include)
+target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/lib)

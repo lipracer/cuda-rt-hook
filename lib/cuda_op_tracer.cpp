@@ -60,8 +60,6 @@ extern "C" CUresult cudaLaunchKernel_wrapper(const void* func, dim3 gridDim,
         BackTraceCollection::instance().collect_backtrace(func);
     }
 
-    auto func_name = reinterpret_cast<const char*>(func);
-    // LOG(INFO) << __func__ << ":" << std::string(func_name, 16);
     static void* org_addr =
         CudaInfoCollection::instance().getSymbolAddr("cudaLaunchKernel");
     // org_addr =
