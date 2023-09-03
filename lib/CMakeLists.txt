@@ -1,8 +1,19 @@
+add_library(logger STATIC 
+    logger.cpp
+)
+
+# Although we used memory pool, it doesn't seem to have a significant advantage over stl.
+# Perhaps we need to implement multi-level pooling, 
+# introduce lock free queues, and avoid using stringstream
+#target_compile_definitions(logger
+#    PRIVATE USE_STL_QUEUE
+#)
+
 add_library(cuda_mock STATIC 
+    logger.cpp
     cuda_mock.cpp 
     hook.cpp 
     cuda_op_tracer.cpp 
-    logger.cpp
     backtrace.cpp
 )
 
@@ -15,15 +26,15 @@ include_directories(PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/fmt/inclu
 
 
 add_library(plthook STATIC
+    logger.cpp
     cuda_mock.cpp 
     hook.cpp 
     cuda_op_tracer.cpp 
-    logger.cpp
     backtrace.cpp
 )
 target_compile_definitions(plthook
     PRIVATE FMT_HEADER_ONLY
 )
 
-target_link_libraries(plthook PRIVATE pthread)
-target_link_libraries(plthook PRIVATE dl)
+target_link_libraries(plthook PRIVATE pthread dl)
+

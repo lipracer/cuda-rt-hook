@@ -4,10 +4,8 @@
 
 #include <atomic>
 #include <deque>
-#include <iostream>
 #include <memory>
 #include <mutex>
-#include <thread>
 #include <vector>
 
 namespace logger {
@@ -17,88 +15,142 @@ inline size_t alignUp(size_t x, size_t align) {
 }
 
 inline size_t alignStringSize(size_t size) {
-    return alignUp(size + 1 + sizeof(size_t), sizeof(size_t));
+    return alignUp(size + 1 + SimpleStringRef::headerSize(),
+                   SimpleStringRef::alignSize());
 }
 
-SimpleStringRef::SimpleStringRef(const char* str, size_t size)
-    : size_(size + 1) {
+SimpleStringRef::SimpleStringRef(const char* str, size_t size) : size_(size) {
     if (size == 0) {
-        memset(reinterpret_cast<char*>(this) + sizeof(size_t), 0,
-               sizeof(size_t));
-        reinterpret_cast<char*>(this)[sizeof(size_t)] = '\n';
+        memset(reinterpret_cast<char*>(this) + SimpleStringRef::headerSize(), 0,
+               SimpleStringRef::alignSize());
     } else {
-        memcpy(reinterpret_cast<char*>(this) + sizeof(size_t), str, size);
-        reinterpret_cast<char*>(this)[sizeof(size_t) + size] = '\n';
-        reinterpret_cast<char*>(this)[sizeof(size_t) + size + 1] = '\0';
+        memcpy(reinterpret_cast<char*>(this) + SimpleStringRef::headerSize(),
+               str, objSize() - SimpleStringRef::headerSize());
     }
-    memset(reinterpret_cast<char*>(this) + sizeof(size_t) + size + 2, 'e',
-           objSize() - invalidSize());
 }
 
 size_t SimpleStringRef::objSize() const { return alignStringSize(size_); }
 
 size_t SimpleStringRef::invalidSize() const {
-    return sizeof(size_t) + size_ + 1;
+    return SimpleStringRef::headerSize() + size_ + 1;
 }
 
 SimpleStringRef* SimpleStringRef::create(StringPool& pool, const char* str,
                                          size_t size) {
-    auto buf = pool.allocStringBuf(size);
+    auto buf = pool.allocStringBuf();
     auto strRef = new (buf) logger::SimpleStringRef(str, size);
+    assert(pool.pool_begin() <= buf && buf < pool.pool_end() &&
+           "buf not in range!");
     return strRef;
 }
 
-StringPool::StringPool(const FlushFunc& flush) : flushFunc_(flush) {
-    pool_ = static_cast<char*>(malloc(kPoolSize()));
+static size_t kPoolPageSize = 4 * 1024 * 1024;
+
+#define CHECK_BEGIN_IN_RANGE()                                 \
+    assert(pool_begin() <= reinterpret_cast<char*>(front()) && \
+           reinterpret_cast<char*>(front()) < pool_end() &&    \
+           "begin not in pool range!")
+
+StringPool::StringRefIterator StringPool::StringRefIterator::operator++() {
+    ptr_ = ptr_->next();
+    return ptr_;
+}
+StringPool::StringRefIterator StringPool::StringRefIterator::operator++(int) {
+    auto cur = ptr_;
+    ptr_ = ptr_->next();
+    return cur;
+}
+
+StringPool::StringPool(const FlushFunc& flush)
+    : flushFunc_(flush), pageSize_(kPoolPageSize) {
+    pool_ = static_cast<char*>(malloc(pageSize_));
     currentPoolBegin_ = pool_;
-    currentPoolEnd_ = currentPoolBegin_ + kPoolSize();
+    currentPoolEnd_ = currentPoolBegin_ + pageSize_;
     begin_ = reinterpret_cast<SimpleStringRef*>(pool_);
 }
 
 StringPool::~StringPool() { free(pool_); }
 
-char* StringPool::allocStringBuf(size_t size) {
-    size_t asize = alignStringSize(size + 1);
-    ++size_;
-    if (currentPoolBegin_ + asize > currentPoolEnd_) {
-        flushPool();
-        size_ = 1;
-        assert(currentPoolBegin_ >= pool_begin());
-        return currentPoolBegin_;
-    }
-    auto ptr = currentPoolBegin_;
-    currentPoolBegin_ += asize;
-    assert(ptr >= pool_begin());
-    return ptr;
-}
+char* StringPool::allocStringBuf() { return currentPoolBegin_; }
 
 void StringPool::flushPool() {
 #if 0
     auto iter = this->begin();
     for (; iter != this->end();) {
         auto preIter = iter++;
-        memset(reinterpret_cast<char*>(&*preIter), '*', sizeof(size_t));
+        memset(reinterpret_cast<char*>(&*preIter), '*', SimpleStringRef::headerSize());
     }
-    flushFunc_(pool_, kPoolSize());
+    flushFunc_(pool_, pageSize_);
 #else
     for (auto& curStr : *this) {
-        assert(strlen(curStr.c_str()) < kPoolSize() && "ilegal str!");
+        assert(strlen(curStr.c_str()) < pageSize_ && "ilegal str!");
+        assert(curStr.c_str() && "flush null string!");
         flushFunc_(curStr.c_str(), curStr.size());
     }
-
 #endif
-    currentPoolBegin_ = pool_;
 }
 
-class LogConsumer {
+void StringPool::push_back(const std::string& str) {
+    size_t alignSize = alignStringSize(str.size());
+    if (currentPoolBegin_ + alignSize > currentPoolEnd_) {
+        flushPool();
+        currentPoolBegin_ = pool_;
+        assert(currentPoolBegin_ == pool_begin() && "flush reset error!");
+        size_ = 1;
+        begin_ = reinterpret_cast<SimpleStringRef*>(pool_);
+    } else {
+        ++size_;
+    }
+    (void)SimpleStringRef::create(*this, str.c_str(), str.size());
+    currentPoolBegin_ += alignSize;
+    assert(size() == debugSize() && "error size!");
+}
+
+void StringPool::pop_front() {
+    --size_;
+    ++begin_;
+    CHECK_BEGIN_IN_RANGE();
+}
+
+bool StringPool::hasEnoughSpace(size_t size) {
+    size_t asize = alignStringSize(size);
+    return currentPoolBegin_ + asize <= currentPoolEnd_;
+}
+
+size_t StringPool::debugSize() {
+    CHECK_BEGIN_IN_RANGE();
+    size_t i = 0;
+    auto iter = begin();
+    while (iter != end()) {
+        ++iter;
+        ++i;
+    }
+    assert(reinterpret_cast<char*>(&*iter) < pool_begin() + kPoolPageSize &&
+           "offset error!");
+    return i;
+}
+
+using StlDeque = std::deque<std::string>;
+
+#ifdef USE_STL_QUEUE
+using StringQueue = StlDeque;
+#else
+using StringQueue = StringPool;
+#endif
+
+inline void fwriteString(const std::string& str, std::FILE* fh) {
+    fwrite(str.c_str(), str.size(), 1, fh);
+}
+
+inline void fwriteString(SimpleStringRef* str, std::FILE* fh) {
+    fwrite(str->c_str(), str->size(), 1, fh);
+}
+
+class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
    public:
-    LogConsumer()
-        : th_(&LogConsumer::print, this),
-          exit_(false),
-          pool_(([](const char* str, size_t size) {
-              fwrite(str, size, 1, stdout);
-          })) {
+    LogConsumer() : exit_(false) {
         tmpBuffer_.resize(256);
+        th_ = std::make_unique<std::thread>(&LogConsumer::print, this);
     }
 
     void pushLog(std::stringstream& ss) {
@@ -106,30 +158,32 @@ class LogConsumer {
         {
             std::lock_guard<std::mutex> guard(mtx_);
             buf_.push_back(std::move(str));
-            ++queueSzie_;
-
-            // auto buf = pool_.allocStringBuf(str.size());
-            // (void)new (buf) logger::SimpleStringRef(str.size(), str.c_str());
         }
-
         ss.clear();
         ss.str("");
     }
 
     void print() {
-        std::cout << "start print" << std::endl;
-        while (!exit_ || queueSzie_.load()) {
+        while (!exit_ || buf_.size()) {
             if (buf_.empty()) {
-                std::this_thread::yield();
-                continue;
+                goto LOOP_END;
             } else {
 #if 1
                 mtx_.lock();
-                std::string str = std::move(buf_.front());
+                if (buf_.empty()) {
+                    mtx_.unlock();
+                    goto LOOP_END;
+                }
+
+#ifdef USE_STL_QUEUE
+                auto str = std::move(buf_.front());
+#else
+                auto str = buf_.front();
+#endif
+
                 buf_.pop_front();
-                --queueSzie_;
                 mtx_.unlock();
-                std::cout << str << std::endl;
+                fwriteString(str, stdout);
 #else
                 mtx_.lock();
                 size_t consumeSize = buf_.size() <= tmpBuffer_.size()
@@ -140,31 +194,41 @@ class LogConsumer {
                 for (size_t i = 0; i < consumeSize; ++i) {
                     buf_.pop_front();
                 }
-                queueSzie_ -= consumeSize;
                 mtx_.unlock();
                 for (size_t i = 0; i < consumeSize; ++i) {
-                    std::cout << tmpBuffer_[i] << std::endl;
+                    fwriteString(tmpBuffer_[i].c_str(), tmpBuffer_[i].size(),
+                                 stdout);
                 }
 #endif
             }
-            // std::this_thread::yield();
+        LOOP_END:
+#if __cplusplus > 201402L
+            auto self = this->weak_from_this();
+            if (self.use_count() != 1) {
+                std::this_thread::yield();
+            }
+#else
+            auto self = this->shared_from_this();
+            if (self.use_count() != 2) {
+                std::this_thread::yield();
+            }
+#endif
         }
-        std::cout << "exit consuer loop" << std::endl;
     }
 
     ~LogConsumer() {
         exit_.store(true);
-        th_.join();
+        th_->detach();
     }
+
+    StringQueue& queue() { return buf_; }
 
    private:
     std::mutex mtx_;
-    std::deque<std::string> buf_;
-    std::thread th_;
+    StringQueue buf_;
     std::atomic<bool> exit_;
-    std::atomic<size_t> queueSzie_{0};
+    std::unique_ptr<std::thread> th_;
     std::vector<std::string> tmpBuffer_;
-    StringPool pool_;
 };
 
 size_t StringLiteralBase::MN = 0;
@@ -179,6 +243,13 @@ LogStream& LogStream::instance() {
     return *__instance;
 }
 
+void setPageSize(size_t size) { kPoolPageSize = size; }
+
+std::thread::id LogStream::threadId() {
+    static thread_local std::thread::id _id = std::this_thread::get_id();
+    return _id;
+}
+
 LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer)
     : logConsumer_(logConsumer) {
     auto strLevel = std::getenv("LOG_LEVEL");
@@ -187,9 +258,19 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer)
     }
 }
 
-LogStream::~LogStream() {}
+LogStream::~LogStream() {
+    std::stringstream ss;
+    ss << LogStream::threadId();
+    int64_t tid;
+    ss >> tid;
+}
 
-void LogStream::flush() { logConsumer_->pushLog(ss_); }
+void LogStream::flush() {
+    ss_ << "\n";
+    logConsumer_->pushLog(ss_);
+}
+
+void initLogger() { (void)LogStream::instance(); }
 
 thread_local std::chrono::high_resolution_clock::duration
     LogWrapper::totalDur{};

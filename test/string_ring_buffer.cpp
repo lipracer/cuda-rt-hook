@@ -13,7 +13,7 @@
 
 #define RANDOM(N) (rand() % (N))
 
-constexpr size_t kLoopCount = 100000;
+constexpr size_t kLoopCount = 1000000;
 
 static void flushBuffer(const char* str, size_t size, std::FILE* fs) {
     fwrite(str, size, 1, fs);
@@ -22,7 +22,7 @@ static void flushBuffer(const char* str, size_t size, std::FILE* fs) {
 TEST(RingBufferTest, rand64_stl) {
     auto fs = fopen("/tmp/rand64_stl.log", "w");
     std::deque<std::string> pool;
-    const size_t kMaxSzie = 23280;
+    const size_t kMaxSzie = 23280 * 4;
     for (size_t i = 0; i < kLoopCount; ++i) {
         auto len = RANDOM(64);
         std::string str(len, '1');
@@ -49,14 +49,40 @@ TEST(RingBufferTest, rand64) {
     for (size_t i = 0; i < kLoopCount; ++i) {
         auto len = RANDOM(64);
         std::string str(len, '1');
+        str.push_back('\n');
         auto strRef =
             logger::SimpleStringRef::create(pool, str.c_str(), str.size());
-
+        // fprintf(stdout, "size:%d %s\n", static_cast<int>(strRef->size()),
+        //         strRef->c_str());
         EXPECT_EQ(len + 1, strRef->size());
         EXPECT_EQ(len + 1, strlen(strRef->c_str()));
     }
     fflush(fs);
     fclose(fs);
+}
+
+TEST(RingBufferTest, pop) {
+    logger::StringPool pool;
+
+    for (size_t i = 0; i < kLoopCount; ++i) {
+        auto len = RANDOM(64);
+        std::string str(len, '1');
+        str.push_back('\n');
+        if (!pool.hasEnoughSpace(str.size())) {
+            auto first = pool.begin();
+            while (pool.begin() != pool.end()) {
+                // std::cout << "size:" << pool.begin()->size() << " "
+                //           << pool.begin()->c_str() << std::endl;
+                pool.pop_front();
+                EXPECT_EQ(reinterpret_cast<char*>(first.operator->()) +
+                              first->objSize(),
+                          reinterpret_cast<char*>(pool.begin().operator->()));
+                first = pool.begin();
+            }
+            break;
+        }
+        (void)logger::SimpleStringRef::create(pool, str.c_str(), str.size());
+    }
 }
 
 // TEST(RingBufferTest, rand100) {

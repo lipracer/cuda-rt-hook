@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 #include <sstream>
+#include <thread>
 #ifndef HAS_NOT_FMT_LIB
 #include "fmt/core.h"
 #endif
@@ -71,6 +72,7 @@ class LogConsumer;
 class LogStream {
    public:
     static LogStream& instance();
+    static std::thread::id threadId();
 
     LogStream(std::shared_ptr<LogConsumer>& logConsumer);
     ~LogStream();
@@ -84,6 +86,8 @@ class LogStream {
         return str[static_cast<int>(level)];
     }
 
+    LogConsumer* logConsumer() { return logConsumer_.get(); }
+
     template <typename T>
     friend LogStream& operator<<(LogStream& s, T&& t);
 
@@ -92,6 +96,10 @@ class LogStream {
     std::stringstream ss_;
     std::shared_ptr<LogConsumer> logConsumer_;
 };
+
+void setPageSize(size_t size);
+
+void initLogger();
 
 #define LOG_CONDITATION(level)    \
     (static_cast<int>((level)) >= \
@@ -107,7 +115,8 @@ struct LogWrapper {
     explicit LogWrapper(LogLevel level) : level_(level) {
         st_ = std::chrono::high_resolution_clock::now();
         LogStream::instance()
-            << "[" << LogStream::instance().getStrLevel(level) << "]";
+            << "[" << LogStream::instance().getStrLevel(level) << "]"
+            << "[TID:" << LogStream::threadId() << "]";
     }
     explicit LogWrapper(int level) : level_(static_cast<LogLevel>(level)) {}
     ~LogWrapper() {
@@ -137,23 +146,29 @@ class StringPool;
 
 struct SimpleStringRef {
     size_t size_;
-    SimpleStringRef(const char* str, size_t size);
+    char c_str_[1];
+
+    // forbidden move copy ctor
+    SimpleStringRef(const SimpleStringRef&) = delete;
+
+    static constexpr size_t alignSize() { return sizeof(size_t); }
+    static constexpr size_t headerSize() { return sizeof(size_); }
 
     size_t objSize() const;
     size_t invalidSize() const;
     SimpleStringRef* next() {
         assert(objSize() > 0 && "alloc size equal 0!");
-        assert(objSize() % sizeof(size_t) == 0 && "alloc size unalign!");
+        assert(objSize() % alignSize() == 0 && "alloc size unalign!");
         return reinterpret_cast<SimpleStringRef*>(
             reinterpret_cast<char*>(this) + objSize());
     }
-    const char* c_str() const {
-        return reinterpret_cast<const char*>(this) + sizeof(size_t);
-    }
+    const char* c_str() const { return c_str_; }
     size_t size() const { return size_; }
-    static SimpleStringRef* create(StringPool& pool, const char* str, size_t size);
-    // operator bool() const { return !!this; }
-    // bool operator!() const { return static_cast<bool>(*this); }
+    static SimpleStringRef* create(StringPool& pool, const char* str,
+                                   size_t size);
+
+   private:
+    SimpleStringRef(const char* str, size_t size);
 };
 
 inline std::ostream& operator<<(std::ostream& os,
@@ -168,15 +183,8 @@ class StringPool {
        public:
         StringRefIterator(SimpleStringRef* ptr) : ptr_(ptr) {}
         StringRefIterator() : StringRefIterator(nullptr) {}
-        StringRefIterator operator++() {
-            ptr_ = ptr_->next();
-            return ptr_;
-        }
-        StringRefIterator operator++(int) {
-            auto cur = ptr_;
-            ptr_ = ptr_->next();
-            return cur;
-        }
+        StringRefIterator operator++();
+        StringRefIterator operator++(int);
 
         const SimpleStringRef& operator*() const { return *ptr_; }
         const SimpleStringRef* operator->() const { return ptr_; }
@@ -199,17 +207,15 @@ class StringPool {
     using interator = StringRefIterator;
     using constan_interator = const StringRefIterator;
 
-    // c++11 didn't support inline constexpr static
-    constexpr size_t kPoolSize() { return 1024 * 1024; }
-    StringPool(const FlushFunc& flush);
+    StringPool(const FlushFunc& flush = [](const char*, size_t) {});
     ~StringPool();
 
-    char* allocStringBuf(size_t size);
+    char* allocStringBuf();
     void flushPool();
 
     const char* pool() const { return pool_; }
 
-    interator begin() { return reinterpret_cast<SimpleStringRef*>(pool_); }
+    interator begin() { return begin_; }
     interator end() {
         return reinterpret_cast<SimpleStringRef*>(currentPoolBegin_);
     }
@@ -221,19 +227,34 @@ class StringPool {
         return reinterpret_cast<SimpleStringRef*>(currentPoolBegin_);
     }
 
+    SimpleStringRef* front() { return &*begin_; }
+
     auto pool_begin() { return reinterpret_cast<char*>(pool_); }
     auto pool_end() { return reinterpret_cast<char*>(currentPoolEnd_); }
 
-    void pop_front() { begin_++; }
+    void push_back(const std::string& str);
+    void pop_front();
+
+    bool empty() { return !size_; }
+
+    size_t debugSize();
+
+    void setFlushFunc(const FlushFunc& flushFunc) { flushFunc_ = flushFunc; }
+
+    bool hasEnoughSpace(size_t size);
+
+    void setPageSize(size_t size) { pageSize_ = size; }
 
    private:
     FlushFunc flushFunc_;
     char* pool_{nullptr};
+    // point the last string's end
     char* currentPoolBegin_{nullptr};
     char* currentPoolEnd_{nullptr};
     size_t size_{0};
     interator begin_;
     interator end_;
+    size_t pageSize_;
 };
 
 }  // namespace logger

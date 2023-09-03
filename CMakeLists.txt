@@ -74,7 +74,7 @@ add_executable(UnitTest
     ${CMAKE_CURRENT_SOURCE_DIR}/test/test_logger.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test/string_ring_buffer.cpp
 )
-target_link_libraries(UnitTest gtest gtest_main plthook)
+target_link_libraries(UnitTest gtest gtest_main logger)
 
 target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/googletest/include)
 target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt/include)
