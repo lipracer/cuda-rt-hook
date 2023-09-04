@@ -97,10 +97,6 @@ class LogStream {
     std::shared_ptr<LogConsumer> logConsumer_;
 };
 
-void setPageSize(size_t size);
-
-void initLogger();
-
 #define LOG_CONDITATION(level)    \
     (static_cast<int>((level)) >= \
      static_cast<int>(logger::LogStream::instance().getLevel()))
@@ -256,6 +252,18 @@ class StringPool {
     interator end_;
     size_t pageSize_;
 };
+
+struct LogConfig {
+    enum LoggerMode {
+        kSync,
+        kAsync,
+    };
+    size_t pageSize{4 * 1024};
+    LoggerMode mode{kAsync};
+    std::FILE* stream{stdout};
+};
+
+void initLogger(const LogConfig&);
 
 }  // namespace logger
 

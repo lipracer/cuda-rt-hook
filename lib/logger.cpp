@@ -44,7 +44,7 @@ SimpleStringRef* SimpleStringRef::create(StringPool& pool, const char* str,
     return strRef;
 }
 
-static size_t kPoolPageSize = 4 * 1024 * 1024;
+LogConfig gLogConfig;
 
 #define CHECK_BEGIN_IN_RANGE()                                 \
     assert(pool_begin() <= reinterpret_cast<char*>(front()) && \
@@ -62,7 +62,7 @@ StringPool::StringRefIterator StringPool::StringRefIterator::operator++(int) {
 }
 
 StringPool::StringPool(const FlushFunc& flush)
-    : flushFunc_(flush), pageSize_(kPoolPageSize) {
+    : flushFunc_(flush), pageSize_(gLogConfig.pageSize) {
     pool_ = static_cast<char*>(malloc(pageSize_));
     currentPoolBegin_ = pool_;
     currentPoolEnd_ = currentPoolBegin_ + pageSize_;
@@ -183,7 +183,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
 
                 buf_.pop_front();
                 mtx_.unlock();
-                fwriteString(str, stdout);
+                fwriteString(str, gLogConfig.stream);
 #else
                 mtx_.lock();
                 size_t consumeSize = buf_.size() <= tmpBuffer_.size()
@@ -197,7 +197,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
                 mtx_.unlock();
                 for (size_t i = 0; i < consumeSize; ++i) {
                     fwriteString(tmpBuffer_[i].c_str(), tmpBuffer_[i].size(),
-                                 stdout);
+                                 gLogConfig.stream);
                 }
 #endif
             }
@@ -243,8 +243,6 @@ LogStream& LogStream::instance() {
     return *__instance;
 }
 
-void setPageSize(size_t size) { kPoolPageSize = size; }
-
 std::thread::id LogStream::threadId() {
     static thread_local std::thread::id _id = std::this_thread::get_id();
     return _id;
@@ -267,10 +265,17 @@ LogStream::~LogStream() {
 
 void LogStream::flush() {
     ss_ << "\n";
-    logConsumer_->pushLog(ss_);
+    if (gLogConfig.mode == LogConfig::kSync) {
+        fwriteString(ss_.str(), gLogConfig.stream);
+    } else {
+        logConsumer_->pushLog(ss_);
+    }
 }
 
-void initLogger() { (void)LogStream::instance(); }
+void initLogger(const LogConfig& cfg) {
+    gLogConfig = cfg;
+    (void)LogStream::instance();
+}
 
 thread_local std::chrono::high_resolution_clock::duration
     LogWrapper::totalDur{};

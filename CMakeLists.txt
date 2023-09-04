@@ -70,12 +70,12 @@ target_link_libraries(cuda_mock_impl LINK_PUBLIC ${Boost_LIBRARIES})
 enable_testing()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest)
 
-add_executable(UnitTest 
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/test_logger.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/string_ring_buffer.cpp
-)
+file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp")
+add_executable(UnitTest ${TEST_SOURCES})
 target_link_libraries(UnitTest gtest gtest_main logger)
+add_test(NAME UnitTest COMMAND UnitTest)
 
 target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/googletest/include)
 target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt/include)
 target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)

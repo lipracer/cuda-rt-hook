@@ -30,7 +30,7 @@ jobs:
     - name: Run tests
       run: |
         cd build
-        ./UnitTest
+        ctest -R
 
     - name: Upload test results
       uses: actions/upload-artifact@v2

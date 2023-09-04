@@ -38,7 +38,7 @@ static void simpleTask() {
 
 TEST(LoggerTest, mt) {
     // LOG(WARN) << "starting";
-    logger::setPageSize(4 * 1024);
+    logger::initLogger(logger::LogConfig{.pageSize = 4 * 1024});
     std::vector<std::thread> ths;
     for (size_t i = 0; i < 10; ++i) {
         ths.emplace_back(simpleTask);
