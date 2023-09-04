@@ -1,7 +1,10 @@
-name: CI
+name: C++ CI
 
 on:
   push:
+    branches:
+      - main
+  pull_request:
     branches:
       - main
 
@@ -10,6 +13,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up CMake
+      run: sudo apt-get install -y cmake
+
+    - name: Build project
+      run: |
+        git submodule update --init --recursive
+        mkdir build
+        cd build
+        cmake ..
+        make
 
     - name: Run tests
-      run: bash tools/run_uint.sh
+      run: |
+        cd build
+        ./UnitTest
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v2
+      with:
+        name: test-results
+        path: build/Testing/Temporary
