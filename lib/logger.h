@@ -258,7 +258,7 @@ struct LogConfig {
         kSync,
         kAsync,
     };
-    size_t pageSize{4 * 1024};
+    size_t pageSize{4 * 1024 * 1024};
     LoggerMode mode{kAsync};
     std::FILE* stream{stdout};
 };
