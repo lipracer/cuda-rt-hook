@@ -19,7 +19,7 @@
 
 #include "backtrace.h"
 #include "cuda_types.h"
-#include "logger.h"
+#include "logger/logger.h"
 
 namespace trace {
 

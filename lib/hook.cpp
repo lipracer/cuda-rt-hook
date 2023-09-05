@@ -26,7 +26,7 @@
 // #include "backward.hpp"
 
 #include "cuda_types.h"
-#include "logger.h"
+#include "logger/logger.h"
 
 #if defined __x86_64__ || defined __x86_64
 #define R_JUMP_SLOT R_X86_64_JUMP_SLOT

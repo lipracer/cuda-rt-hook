@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #include "gtest/gtest.h"
-#include "logger.h"
+#include "logger/logger.h"
 #include "support.h"
 
 using namespace support;

@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "logger.h"
+#include "logger/logger.h"
 
 #define RANDOM(N) (rand() % (N))
 

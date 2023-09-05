@@ -10,7 +10,7 @@
 #include <fstream>
 #include <regex>
 
-#include "logger.h"
+#include "logger/logger.h"
 
 namespace trace {
 

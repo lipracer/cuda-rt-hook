@@ -7,7 +7,7 @@
 #include "backtrace.h"
 #include "cuda_op_tracer.h"
 #include "hook.h"
-#include "logger.h"
+#include "logger/logger.h"
 
 std::jmp_buf log_jump_buffer = {{}};
 

@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "logger.h"
+#include "logger/logger.h"
 
 constexpr size_t kTaskCount = 10000;
 
