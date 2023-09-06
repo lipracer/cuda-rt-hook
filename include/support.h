@@ -1,5 +1,6 @@
 #pragma once
 #include <stdlib.h>
+
 #include <type_traits>
 #include <utility>
 
@@ -56,8 +57,8 @@ class __Any {
 
     __Any(__Any&& other) {
         std::swap(buf_, other.buf_);
-        std::swap(kind_, other.kind_);
         releaseBuf_ = other.releaseBuf_;
+        castImpl_ = other.castImpl_;
     }
 
     __Any& operator=(__Any&& other) {
@@ -65,29 +66,34 @@ class __Any {
             return *this;
         }
         std::swap(buf_, other.buf_);
-        std::swap(kind_, other.kind_);
         releaseBuf_ = other.releaseBuf_;
+        castImpl_ = other.castImpl_;
         return *this;
     }
 
     template <typename T>
-    __Any(T&& t, CaptureKind::Value) : kind_(kValue), releaseBuf_(true) {
+    __Any(T&& t, CaptureKind::Value) : releaseBuf_(true) {
         using ValueT = typename std::remove_reference<T>::type;
         buf_ = AllocT().alloc(sizeof(T));
         new (buf_) ValueT(std::forward<T>(t));
+        castImpl_ = reinterpret_cast<void*>(
+            &__Any<AllocT>::as_bv<std::remove_reference_t<T>>);
     }
 
     template <typename T>
-    __Any(T&& t, CaptureKind::Reference) : kind_(kReference) {
+    __Any(T&& t, CaptureKind::Reference) {
         buf_ = &t;
+        castImpl_ = reinterpret_cast<void*>(
+            &__Any<AllocT>::as_br<std::remove_reference_t<T>>);
     }
 
     template <typename T>
-    __Any(T&& t, size_t size, CaptureKind::DeepCopy)
-        : kind_(kDeepCopy), releaseBuf_(true) {
+    __Any(T&& t, size_t size, CaptureKind::DeepCopy) : releaseBuf_(true) {
         buf_ = AllocT().alloc(size);
         auto buf = reinterpret_cast<char*>(buf_);
         memcpy(buf, std::forward<T>(t), size);
+        castImpl_ = reinterpret_cast<void*>(
+            &__Any<AllocT>::as_dc<std::remove_reference_t<T>>);
     }
 
     ~__Any() {
@@ -98,19 +104,29 @@ class __Any {
 
     template <typename T>
     T as() {
+        return reinterpret_cast<T (*)(void*)>(castImpl_)(buf_);
+    }
+
+    template <typename T>
+    static T as_dc(void* buf) {
+        return reinterpret_cast<T>(buf);
+    }
+
+    template <typename T>
+    static T as_bv(void* buf) {
         using ValueT = typename std::remove_reference<T>::type;
-        if (kind_ == kDeepCopy) {
-            return reinterpret_cast<T>(buf_);
-        }
-        if (kind_ == kReference) {
-            return *reinterpret_cast<ValueT*>(buf_);
-        }
-        return *reinterpret_cast<ValueT*>(buf_);
+        return *reinterpret_cast<ValueT*>(buf);
+    }
+
+    template <typename T>
+    static T as_br(void* buf) {
+        using ValueT = typename std::remove_reference<T>::type;
+        return *reinterpret_cast<ValueT*>(buf);
     }
 
    private:
     void* buf_{nullptr};
-    CaptureKind_ kind_{kValue};
+    void* castImpl_{nullptr};
     bool releaseBuf_{false};
 };
 
