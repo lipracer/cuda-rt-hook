@@ -125,7 +125,8 @@ size_t StringPool::debugSize() {
         ++iter;
         ++i;
     }
-    assert(reinterpret_cast<char*>(&*iter) < pool_begin() + kPoolPageSize &&
+    assert(reinterpret_cast<char*>(&*iter) <
+               pool_begin() + gLogConfig.pageSize &&
            "offset error!");
     return i;
 }
@@ -267,6 +268,7 @@ void LogStream::flush() {
     ss_ << "\n";
     if (gLogConfig.mode == LogConfig::kSync) {
         fwriteString(ss_.str(), gLogConfig.stream);
+        ss_.str("");
     } else {
         logConsumer_->pushLog(ss_);
     }

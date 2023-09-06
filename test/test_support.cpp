@@ -14,9 +14,9 @@ int wrap_rt_malloc(void** ptr, size_t size) {
 
 int rt_malloc(void** ptr, size_t size) {
     LOG(DEBUG) << __func__ << " ptr:" << ptr << " size:" << size;
-    Functor<int(void** ptr, size_t size)> functor(&wrap_rt_malloc);
-    functor.captureByValue(0, ptr);
-    functor.captureByValue(1, size);
+    Functor<int> functor(&wrap_rt_malloc);
+    functor.capture(0, ptr);
+    functor.capture(1, size);
     functor();
     return 0;
 }
@@ -30,11 +30,11 @@ int wrap_set_parameter(size_t index, void* ptr, size_t size) {
 int set_parameter(size_t index, void* ptr, size_t size) {
     LOG(DEBUG) << __func__ << " index:" << index << " ptr:" << ptr
                << " size:" << size;
-    Functor<int(size_t index, void* ptr, size_t size)> functor(
+    Functor<int> functor(
         &wrap_set_parameter);
-    functor.captureByValue(0, index);
+    functor.capture(0, index);
     functor.captureByDeepCopy(1, ptr, size);
-    functor.captureByValue(2, size);
+    functor.capture(2, size);
     functor();
     return 0;
 }
