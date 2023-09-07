@@ -267,7 +267,8 @@ LogStream::~LogStream() {
 void LogStream::flush() {
     ss_ << "\n";
     if (gLogConfig.mode == LogConfig::kSync) {
-        fwriteString(ss_.str(), gLogConfig.stream);
+        printf("%s", ss_.str().c_str());
+        // fwriteString(ss_.str(), gLogConfig.stream);
         ss_.str("");
     } else {
         logConsumer_->pushLog(ss_);

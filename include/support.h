@@ -55,17 +55,13 @@ class __Any {
     __Any(const __Any&) = delete;
     __Any& operator=(const __Any& other) = delete;
 
-    __Any(__Any&& other) {
-        std::swap(buf_, other.buf_);
-        releaseBuf_ = other.releaseBuf_;
-        castImpl_ = other.castImpl_;
-    }
+    __Any(__Any&& other) { *this = std::move(other); }
 
     __Any& operator=(__Any&& other) {
         if (this == &other) {
             return *this;
         }
-        std::swap(buf_, other.buf_);
+        buf_ = other.buf_;
         releaseBuf_ = other.releaseBuf_;
         castImpl_ = other.castImpl_;
         return *this;
@@ -179,6 +175,23 @@ class Functor {
         }
     }
 
+    Functor(Functor&& other) {
+        *this = std::move(other);
+    }
+    Functor& operator=(Functor&& other) {
+        if (this == &other) {
+            return *this;
+        }
+        std::swap(funcPtr_, other.funcPtr_);
+        std::swap(args_, other.args_);
+        std::swap(invoker_, other.invoker_);
+        return *this;
+    }
+
+    // TODO support
+    Functor(const Functor& other) = delete;
+    Functor& operator=(const Functor& other) = delete;
+
     ~Functor() { AllocT().dealloc(args_); }
 
     template <typename T>
@@ -217,9 +230,10 @@ class Functor {
     }
 
    private:
-    void* funcPtr_;
-    Any* args_;
-    U (*invoker_)(void*, Any*);
+   using InvokePtrT = U (*)(void*, Any*);
+    void* funcPtr_{nullptr};
+    Any* args_{nullptr};
+    InvokePtrT invoker_{nullptr};
 };
 
 }  // namespace support
