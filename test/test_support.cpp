@@ -55,28 +55,22 @@ int config_hw(void* s, int ng, int nb) {
     return 0;
 }
 
-#define InitSyncLog()                                             \
-    do {                                                          \
-        logger::initLogger(                                       \
-            logger::LogConfig{.mode = logger::LogConfig::kSync}); \
-    } while (0)
+static const int gLogDummp =
+    (logger::initLogger(logger::LogConfig{.mode = logger::LogConfig::kSync}),
+     0);
 
 TEST(SupportTest, functor_malloc) {
-    InitSyncLog();
     void* ptr = nullptr;
     rt_malloc(&ptr, 100);
 }
 
 TEST(SupportTest, functor_deepcopy) {
-    InitSyncLog();
     const size_t buffer_size = 100;
     void* ptr = malloc(buffer_size);
     set_parameter(0, ptr, buffer_size);
 }
 
 TEST(SupportTest, functor_any_cast) {
-    InitSyncLog();
-
     // test by value to any ahnd move constructor
     {
         int n = 100;

@@ -165,6 +165,8 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
     }
 
     void print() {
+        // increase the ref count avoid other thread release self
+        auto self = this->shared_from_this();
         while (!exit_ || buf_.size()) {
             if (buf_.empty()) {
                 goto LOOP_END;
@@ -203,18 +205,11 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
 #endif
             }
         LOOP_END:
-#if __cplusplus > 201402L
-            auto self = this->weak_from_this();
-            if (self.use_count() != 1) {
+            if (self.use_count() > 1) {
                 std::this_thread::yield();
             }
-#else
-            auto self = this->shared_from_this();
-            if (self.use_count() != 2) {
-                std::this_thread::yield();
-            }
-#endif
         }
+        
     }
 
     ~LogConsumer() {
