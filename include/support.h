@@ -26,29 +26,24 @@ static std::string __support__demangle(const char* name) { return name; }
 
 namespace support {
 
-namespace CaptureKind {
-struct Value {};
-struct Reference {};
-struct DeepCopy {};
-};  // namespace CaptureKind
-
 class SimpleAllocater {
    public:
-    void* alloc(size_t size) {
+    static void* alloc(size_t size) {
         auto ptr = malloc(size);
         return ptr;
     }
 
-    void dealloc(void* ptr) { free(ptr); }
+    static void dealloc(void* ptr) { free(ptr); }
+
+    static void empty_dealloc(void* ptr) {}
 };
 
 template <typename AllocT = SimpleAllocater>
 class __Any {
-    enum CaptureKind_ {
-        kValue = 0,
-        kReference = 1,
-        kDeepCopy = 2,
-    };
+   public:
+    struct by_value_tag {};
+    struct by_reference_tag {};
+    struct by_deepcopy_tag {};
 
    public:
     __Any() {}
@@ -61,48 +56,45 @@ class __Any {
         if (this == &other) {
             return *this;
         }
-        buf_ = other.buf_;
-        releaseBuf_ = other.releaseBuf_;
+        buf_ = std::exchange(other.buf_, nullptr);
+        dealloctor_ = std::exchange(other.dealloctor_, &AllocT::empty_dealloc);
         castImpl_ = other.castImpl_;
         return *this;
     }
 
     template <typename T>
-    __Any(T&& t, CaptureKind::Value) : releaseBuf_(true) {
+    __Any(T&& t, by_value_tag = {}) : dealloctor_(&AllocT::dealloc) {
         using ValueT = typename std::remove_reference<T>::type;
-        buf_ = AllocT().alloc(sizeof(T));
+        buf_ = AllocT::alloc(sizeof(T));
         new (buf_) ValueT(std::forward<T>(t));
         castImpl_ = reinterpret_cast<void*>(
             &__Any<AllocT>::as_bv<std::remove_reference_t<T>>);
     }
 
     template <typename T>
-    __Any(T&& t, CaptureKind::Reference) {
+    __Any(T&& t, by_reference_tag) {
         buf_ = &t;
         castImpl_ = reinterpret_cast<void*>(
             &__Any<AllocT>::as_br<std::remove_reference_t<T>>);
     }
 
     template <typename T>
-    __Any(T&& t, size_t size, CaptureKind::DeepCopy) : releaseBuf_(true) {
-        buf_ = AllocT().alloc(size);
+    __Any(T&& t, size_t size, by_deepcopy_tag) : dealloctor_(&AllocT::dealloc) {
+        buf_ = AllocT::alloc(size);
         auto buf = reinterpret_cast<char*>(buf_);
         memcpy(buf, std::forward<T>(t), size);
         castImpl_ = reinterpret_cast<void*>(
             &__Any<AllocT>::as_dc<std::remove_reference_t<T>>);
     }
 
-    ~__Any() {
-        if (releaseBuf_) {
-            AllocT().dealloc(buf_);
-        }
-    }
+    ~__Any() { dealloctor_(buf_); }
 
     template <typename T>
     T as() {
         return reinterpret_cast<T (*)(void*)>(castImpl_)(buf_);
     }
 
+   private:
     template <typename T>
     static T as_dc(void* buf) {
         return reinterpret_cast<T>(buf);
@@ -115,7 +107,7 @@ class __Any {
     }
 
     template <typename T>
-    static T as_br(void* buf) {
+    static T& as_br(void* buf) {
         using ValueT = typename std::remove_reference<T>::type;
         return *reinterpret_cast<ValueT*>(buf);
     }
@@ -123,7 +115,8 @@ class __Any {
    private:
     void* buf_{nullptr};
     void* castImpl_{nullptr};
-    bool releaseBuf_{false};
+    using DellocPtrT = void (*)(void*);
+    DellocPtrT dealloctor_{&AllocT::empty_dealloc};
 };
 
 using Any = __Any<>;
@@ -168,16 +161,14 @@ class Functor {
     explicit Functor(R (*ptr)(Args...))
         : funcPtr_(reinterpret_cast<void*>(ptr)),
           args_(reinterpret_cast<Any*>(
-              AllocT().alloc(sizeof(Any) * sizeof...(Args)))),
+              AllocT::alloc(sizeof(Any) * sizeof...(Args)))),
           invoker_(&Invoker<R(Args...)>::InvokeImplement) {
         for (size_t i = 0; i < sizeof...(Args); ++i) {
             (void)new (reinterpret_cast<void*>(args_ + i)) Any();
         }
     }
 
-    Functor(Functor&& other) {
-        *this = std::move(other);
-    }
+    Functor(Functor&& other) { *this = std::move(other); }
     Functor& operator=(Functor&& other) {
         if (this == &other) {
             return *this;
@@ -192,27 +183,27 @@ class Functor {
     Functor(const Functor& other) = delete;
     Functor& operator=(const Functor& other) = delete;
 
-    ~Functor() { AllocT().dealloc(args_); }
+    ~Functor() { AllocT::dealloc(args_); }
 
     template <typename T>
     typename std::enable_if_t<
         !std::is_reference<std::remove_reference_t<T>>::value>
     capture(size_t argIndex, T&& arg) {
-        args_[argIndex] = Any(std::forward<T>(arg), CaptureKind::Value());
+        args_[argIndex] = Any(std::forward<T>(arg), Any::by_value_tag());
     }
 
     template <typename T>
     typename std::enable_if_t<
         std::is_reference<std::remove_reference_t<T>>::value>
     capture(size_t argIndex, T&& arg) {
-        args_[argIndex] = Any(std::forward<T>(arg), CaptureKind::Reference());
+        args_[argIndex] = Any(std::forward<T>(arg), Any::by_reference_tag());
     }
 
     template <typename T>
     typename std::enable_if_t<
         std::is_rvalue_reference<std::remove_reference_t<T>>::value>
     capture(size_t argIndex, T&& arg) {
-        args_[argIndex] = Any(std::forward<T>(arg), CaptureKind::Value());
+        args_[argIndex] = Any(std::forward<T>(arg), Any::by_value_tag());
     }
 
     template <typename T>
@@ -221,7 +212,7 @@ class Functor {
             std::is_pointer<typename std::remove_reference<T>::type>::value,
             "deep copy must pointer type.");
         args_[argIndex] =
-            Any(std::forward<T>(arg), size, CaptureKind::DeepCopy());
+            Any(std::forward<T>(arg), size, Any::by_deepcopy_tag());
     }
 
     U operator()(typename std::enable_if<!std::is_same<U, void>::value,
@@ -230,7 +221,7 @@ class Functor {
     }
 
    private:
-   using InvokePtrT = U (*)(void*, Any*);
+    using InvokePtrT = U (*)(void*, Any*);
     void* funcPtr_{nullptr};
     Any* args_{nullptr};
     InvokePtrT invoker_{nullptr};

@@ -1,6 +1,8 @@
 
 #include <stdlib.h>
 
+#include <numeric>
+
 #include "gtest/gtest.h"
 #include "logger/logger.h"
 #include "support.h"
@@ -74,6 +76,38 @@ TEST(SupportTest, functor_deepcopy) {
 
 TEST(SupportTest, functor_any_cast) {
     InitSyncLog();
+
+    // test by value to any ahnd move constructor
+    {
+        int n = 100;
+        support::Any any(n);
+        EXPECT_EQ(any.as<int>(), n);
+
+        auto other_any = std::move(any);
+        EXPECT_EQ(other_any.as<int>(), n);
+    }
+
+    // test by deepcopy to any ahnd move constructor
+    {
+        const size_t size = 100;
+        std::vector<int> vec(size, 0);
+        std::iota(vec.begin(), vec.end(), 0);
+        support::Any any(vec.data(), sizeof(int) * size,
+                         support::Any::by_deepcopy_tag());
+        auto other_any = std::move(any);
+        auto buf = other_any.as<int*>();
+        EXPECT_TRUE(std::equal(vec.begin(), vec.end(), buf));
+    }
+
+    // test by reference to any ahnd move constructor
+    {
+        size_t size = 100;
+        support::Any any(size, support::Any::by_reference_tag());
+        auto other_any = std::move(any);
+        auto& value = other_any.as<size_t&>();
+        EXPECT_EQ(size, value);
+    }
+
     void* ptr = malloc(4);
     config_hw(ptr, 10, 10);
 }
