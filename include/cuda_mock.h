@@ -1,6 +1,6 @@
 #pragma once
 
-#define EXPORT __attribute__((__visibility__("default")))
+#define HOOK_API __attribute__((__visibility__("default")))
 
 #ifdef __cplusplus
 

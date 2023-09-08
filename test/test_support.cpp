@@ -111,3 +111,35 @@ TEST(SupportTest, functor_any_cast) {
     void* ptr = malloc(4);
     config_hw(ptr, 10, 10);
 }
+
+TEST(SupportTest, functor_any_destructor) {
+    const size_t size = 10;
+    // test any destructor
+    {
+        auto ptr = new int[size];
+        std::iota(ptr, ptr + size, 0);
+        std::shared_ptr<int> sp(ptr);
+        {
+            support::Any any(sp);
+            EXPECT_EQ(sp.use_count(), 2);
+            auto any_sp = any.as<std::shared_ptr<int>>();
+            for (size_t i = 0; i < size; ++i) {
+                EXPECT_EQ(ptr[i], any_sp.get()[i]);
+            }
+        }
+        EXPECT_EQ(sp.use_count(), 1);
+    }
+    // test functor destructor
+    {
+        auto ptr = new int[size];
+        std::shared_ptr<int> sp(ptr);
+        void (*func_ptr)(std::shared_ptr<int>) = nullptr;
+        {
+            auto functor = std::make_unique<support::Functor<void>>(func_ptr);
+            EXPECT_EQ(sp.use_count(), 1);
+            functor->capture(0, sp);
+            EXPECT_EQ(sp.use_count(), 2);
+        }
+        EXPECT_EQ(sp.use_count(), 1);
+    }
+}
