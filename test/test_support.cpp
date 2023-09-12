@@ -137,3 +137,12 @@ TEST(SupportTest, functor_any_destructor) {
         EXPECT_EQ(sp.use_count(), 1);
     }
 }
+
+TEST(SupportTest, functor_ctor) { 
+    std::vector<support::Functor<int>> functors;
+
+    Functor<int> functor(&rt_malloc);
+    functor.capture(0, nullptr);
+    functor.capture(1, 1);
+    functors.emplace_back(std::move(functor));
+}

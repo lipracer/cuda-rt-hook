@@ -44,8 +44,6 @@ SimpleStringRef* SimpleStringRef::create(StringPool& pool, const char* str,
     return strRef;
 }
 
-LogConfig gLogConfig;
-
 #define CHECK_BEGIN_IN_RANGE()                                 \
     assert(pool_begin() <= reinterpret_cast<char*>(front()) && \
            reinterpret_cast<char*>(front()) < pool_end() &&    \
@@ -61,8 +59,8 @@ StringPool::StringRefIterator StringPool::StringRefIterator::operator++(int) {
     return cur;
 }
 
-StringPool::StringPool(const FlushFunc& flush)
-    : flushFunc_(flush), pageSize_(gLogConfig.pageSize) {
+StringPool::StringPool(size_t pageSzie, const FlushFunc& flush)
+    : flushFunc_(flush), pageSize_(pageSzie) {
     pool_ = static_cast<char*>(malloc(pageSize_));
     currentPoolBegin_ = pool_;
     currentPoolEnd_ = currentPoolBegin_ + pageSize_;
@@ -125,8 +123,7 @@ size_t StringPool::debugSize() {
         ++iter;
         ++i;
     }
-    assert(reinterpret_cast<char*>(&*iter) <
-               pool_begin() + gLogConfig.pageSize &&
+    assert(reinterpret_cast<char*>(&*iter) <= pool_begin() + pageSize_ &&
            "offset error!");
     return i;
 }
@@ -149,7 +146,13 @@ inline void fwriteString(SimpleStringRef* str, std::FILE* fh) {
 
 class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
    public:
-    LogConsumer() : exit_(false) {
+    LogConsumer(const std::shared_ptr<LogConfig>& cfg)
+        :
+#ifndef USE_STL_QUEUE
+          buf_(cfg->pageSize),
+#endif
+          exit_(false),
+          cfg_(cfg) {
         tmpBuffer_.resize(256);
         th_ = std::make_unique<std::thread>(&LogConsumer::print, this);
     }
@@ -186,7 +189,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
 
                 buf_.pop_front();
                 mtx_.unlock();
-                fwriteString(str, gLogConfig.stream);
+                fwriteString(str, cfg_->stream);
 #else
                 mtx_.lock();
                 size_t consumeSize = buf_.size() <= tmpBuffer_.size()
@@ -200,7 +203,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
                 mtx_.unlock();
                 for (size_t i = 0; i < consumeSize; ++i) {
                     fwriteString(tmpBuffer_[i].c_str(), tmpBuffer_[i].size(),
-                                 gLogConfig.stream);
+                                 cfg_->stream);
                 }
 #endif
             }
@@ -209,7 +212,6 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
                 std::this_thread::yield();
             }
         }
-        
     }
 
     ~LogConsumer() {
@@ -225,17 +227,20 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
     std::atomic<bool> exit_;
     std::unique_ptr<std::thread> th_;
     std::vector<std::string> tmpBuffer_;
+    std::shared_ptr<LogConfig> cfg_;
 };
 
 size_t StringLiteralBase::MN = 0;
 
-LogStream& LogStream::instance() {
+LogStream& LogStream::instance(const LogConfig& cfg) {
+    auto sp_cfg = std::make_shared<LogConfig>(cfg);
     static std::shared_ptr<LogConsumer> gLogConsumer =
-        std::make_shared<LogConsumer>();
+        std::make_shared<LogConsumer>(sp_cfg);
     // static thread_local std::unique_ptr<LogStream> __instance =
     //     std::make_unique<LogStream>(gLogConsumer);
 
-    static thread_local LogStream* __instance = new LogStream(gLogConsumer);
+    static thread_local LogStream* __instance =
+        new LogStream(gLogConsumer, sp_cfg);
     return *__instance;
 }
 
@@ -244,8 +249,9 @@ std::thread::id LogStream::threadId() {
     return _id;
 }
 
-LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer)
-    : logConsumer_(logConsumer) {
+LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
+                     const std::shared_ptr<LogConfig>& cfg)
+    : logConsumer_(logConsumer), cfg_(cfg) {
     auto strLevel = std::getenv("LOG_LEVEL");
     if (strLevel) {
         level_ = static_cast<LogLevel>(atoi(strLevel));
@@ -261,7 +267,7 @@ LogStream::~LogStream() {
 
 void LogStream::flush() {
     ss_ << "\n";
-    if (gLogConfig.mode == LogConfig::kSync) {
+    if (cfg_->mode == LogConfig::kSync) {
         printf("%s", ss_.str().c_str());
         // fwriteString(ss_.str(), gLogConfig.stream);
         ss_.str("");
@@ -270,10 +276,7 @@ void LogStream::flush() {
     }
 }
 
-void initLogger(const LogConfig& cfg) {
-    gLogConfig = cfg;
-    (void)LogStream::instance();
-}
+void initLogger(const LogConfig& cfg) { (void)LogStream::instance(cfg); }
 
 thread_local std::chrono::high_resolution_clock::duration
     LogWrapper::totalDur{};

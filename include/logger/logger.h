@@ -67,14 +67,25 @@ constexpr std::ostream& operator<<(std::ostream& os,
     return os;
 }
 
+struct LogConfig {
+    enum LoggerMode {
+        kSync,
+        kAsync,
+    };
+    size_t pageSize{4 * 1024 * 1024};
+    LoggerMode mode{kAsync};
+    std::FILE* stream{stdout};
+};
+
 class LogConsumer;
 
 class LogStream {
    public:
-    static LogStream& instance();
+    static LogStream& instance(const LogConfig& cfg = {});
     static std::thread::id threadId();
 
-    LogStream(std::shared_ptr<LogConsumer>& logConsumer);
+    LogStream(std::shared_ptr<LogConsumer>& logConsumer,
+              const std::shared_ptr<LogConfig>& cfg);
     ~LogStream();
 
     void flush();
@@ -95,6 +106,7 @@ class LogStream {
     LogLevel level_ = LogLevel::warning;
     std::stringstream ss_;
     std::shared_ptr<LogConsumer> logConsumer_;
+    std::shared_ptr<LogConfig> cfg_;
 };
 
 #define LOG_CONDITATION(level)    \
@@ -203,7 +215,8 @@ class StringPool {
     using interator = StringRefIterator;
     using constan_interator = const StringRefIterator;
 
-    StringPool(const FlushFunc& flush = [](const char*, size_t) {});
+    StringPool(
+        size_t pageSize, const FlushFunc& flush = [](const char*, size_t) {});
     ~StringPool();
 
     char* allocStringBuf();
@@ -253,17 +266,7 @@ class StringPool {
     size_t pageSize_;
 };
 
-struct LogConfig {
-    enum LoggerMode {
-        kSync,
-        kAsync,
-    };
-    size_t pageSize{4 * 1024 * 1024};
-    LoggerMode mode{kAsync};
-    std::FILE* stream{stdout};
-};
-
-void initLogger(const LogConfig&);
+void initLogger(const LogConfig& = LogConfig{});
 
 }  // namespace logger
 

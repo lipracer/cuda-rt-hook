@@ -172,6 +172,21 @@ class FunctorBase {
     Any* args_{nullptr};
     FunctorBase(InvokePtrT i, void* f, Any* a)
         : invoker_(i), funcPtr_(f), args_(a) {}
+
+    FunctorBase(FunctorBase&& other) { *this = std::move(other); }
+    FunctorBase& operator=(FunctorBase&& other) {
+        if (this == &other) {
+            return *this;
+        }
+        std::swap(this->funcPtr_, other.funcPtr_);
+        std::swap(this->invoker_, other.invoker_);
+        this->args_ = std::exchange(other.args_, nullptr);
+        return *this;
+    }
+
+    // TODO support
+    FunctorBase(const FunctorBase& other) = delete;
+    FunctorBase& operator=(const FunctorBase& other) = delete;
 };
 
 template <typename R>
@@ -212,23 +227,20 @@ class Functor : public SpecialFunctorBase<U> {
         }
     }
 
-    Functor(Functor&& other) { *this = std::move(other); }
+    Functor(Functor&& other) : Base(std::move(other)) {
+        args_destructor_ = std::exchange(other.args_destructor_, nullptr);
+    }
     Functor& operator=(Functor&& other) {
         if (this == &other) {
             return *this;
         }
-        std::swap(this->funcPtr_, other.funcPtr_);
-        std::swap(this->invoker_, other.invoker_);
-        this->args_ = std::exchange(other.args_, nullptr);
+        *static_cast<Base*>(this) = std::move(other);
+        args_destructor_ = std::exchange(other.args_destructor_, nullptr);
         return *this;
     }
 
-    // TODO support
-    Functor(const Functor& other) = delete;
-    Functor& operator=(const Functor& other) = delete;
-
     ~Functor() {
-        args_destructor_(this->args_);
+        if (args_destructor_) args_destructor_(this->args_);
     }
 
     template <typename T>
@@ -273,7 +285,7 @@ class Functor : public SpecialFunctorBase<U> {
     }
 
    private:
-    void (*args_destructor_)(Any* any){nullptr};
+    void (*args_destructor_)(Any* any);
 };
 
 }  // namespace support

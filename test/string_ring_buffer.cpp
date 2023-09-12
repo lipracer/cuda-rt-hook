@@ -43,8 +43,9 @@ TEST(RingBufferTest, rand64_stl) {
 
 TEST(RingBufferTest, rand64) {
     auto fs = fopen("/tmp/rand64.log", "w");
-    logger::StringPool pool(
-        [&](const char* str, size_t size) { flushBuffer(str, size, fs); });
+    logger::StringPool pool(4096, [&](const char* str, size_t size) {
+        flushBuffer(str, size, fs);
+    });
 
     for (size_t i = 0; i < kLoopCount; ++i) {
         auto len = RANDOM(64);
@@ -62,7 +63,7 @@ TEST(RingBufferTest, rand64) {
 }
 
 TEST(RingBufferTest, pop) {
-    logger::StringPool pool;
+    logger::StringPool pool(4096);
 
     for (size_t i = 0; i < kLoopCount; ++i) {
         auto len = RANDOM(64);
