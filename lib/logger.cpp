@@ -154,7 +154,9 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
           exit_(false),
           cfg_(cfg) {
         tmpBuffer_.resize(256);
-        th_ = std::make_unique<std::thread>(&LogConsumer::print, this);
+        if (cfg->mode == LogConfig::kAsync) {
+            th_ = std::make_unique<std::thread>(&LogConsumer::print, this);
+        }
     }
 
     void pushLog(std::stringstream& ss) {

@@ -320,8 +320,28 @@ class Functor : public SpecialFunctorBase<U> {
     void (*args_destructor_)(Any* any);
 };
 
+template <typename T>
+auto __internal_operator_square_brackets(T& t, size_t index) {
+    return t[index];
+}
+
 class OpFunctor : public Functor<Any> {
    public:
+    using Functor<Any>::capture;
+
+    template <typename T>
+    class PlaceHolder : public std::reference_wrapper<T> {
+       public:
+        using std::reference_wrapper<T>::reference_wrapper;
+
+        auto operator[](size_t index) {
+            OpFunctor accessor(__internal_operator_square_brackets<T>);
+            accessor.captureByReference(0, this->get());
+            accessor.capture(1, index);
+            return accessor;
+        }
+    };
+
     template <typename R, typename... Args>
     OpFunctor(R (*ptr)(Args...)) : Functor<Any>::Functor(ptr) {
         result_ = R{};
@@ -335,11 +355,14 @@ class OpFunctor : public Functor<Any> {
         feed_placeholder_(result);
     }
 
-    // TODO: return placeHold type and call capture,
-    // then remove capture by reference
     template <typename T>
-    T& getResult() {
-        return result_.as<T>();
+    void capture(size_t index, PlaceHolder<T> ph) {
+        Functor<Any>::captureByReference(index, ph.get());
+    }
+
+    template <typename T>
+    PlaceHolder<T> getResult() {
+        return PlaceHolder<T>(result_.as<T>());
     }
 
     Any* getArgs() { return this->args_; }

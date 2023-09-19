@@ -160,6 +160,38 @@ static auto scalar_add(int a, int b) { return a + b; }
 
 static auto scalar_sub(int a, int b) { return a - b; }
 
+static auto vector_add(const std::vector<int>& a, const std::vector<int>& b) {
+    std::vector<int> result(a.size());
+    std::transform(a.begin(), a.end(), b.begin(), result.begin(),
+                   [](auto lhs, auto rhs) { return lhs + rhs; });
+    return result;
+}
+
+static auto vector_sub(const std::vector<int>& a, const std::vector<int>& b) {
+    std::vector<int> result(a.size());
+    std::transform(a.begin(), a.end(), b.begin(), result.begin(),
+                   [](auto lhs, auto rhs) { return lhs + rhs; });
+    return result;
+}
+
+TEST(SupportTest, functor_member_func) {
+    std::vector<int> vec_int = {1, 2, 3, 4, 5, 6};
+    using VecInt = std::vector<int>;
+    OpFunctor functor(vector_add);
+    functor.capture(0, vec_int);
+    functor.capture(1, vec_int);
+    auto accessor = functor.getResult<VecInt>()[2];
+
+    OpFunctor functor_s(scalar_add);
+    functor_s.capture(0, accessor.getResult<int>());
+    functor_s.capture(1, 2);
+
+    functor();
+    accessor();
+    functor_s();
+    EXPECT_EQ(functor_s.getResult<int>(), 8);
+}
+
 TEST(SupportTest, opfunctor_scalar) {
     int a = 1, b = 2;
 
@@ -168,13 +200,13 @@ TEST(SupportTest, opfunctor_scalar) {
     functor0.capture(1, b);
 
     OpFunctor functor1(&scalar_sub);
-    functor1.captureByReference(0, functor0.getResult<int>());
+    functor1.capture(0, functor0.getResult<int>());
     functor1.capture(1, a);
 
     functor0();
     functor1();
 
-    EXPECT_EQ(functor1.getResult<int>(), b);
+    EXPECT_EQ(functor1.getResult<int>().get(), b);
 }
 
 using Dim = int64_t;
@@ -248,7 +280,7 @@ TEST(SupportTest, opfunctor_tensor) {
     functor0.capture(1, param1);
 
     OpFunctor functor1(&sub);
-    functor1.captureByReference(0, functor0.getResult<Tensor>());
+    functor1.capture(0, functor0.getResult<Tensor>());
     functor1.capture(1, param1);
 
     functor0();
