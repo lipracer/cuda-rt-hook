@@ -56,7 +56,8 @@ class __Any {
         if (this == &other) {
             return *this;
         }
-        buf_ = std::exchange(other.buf_, nullptr);
+        // buf_ = std::exchange(other.buf_, nullptr);
+        buf_ = other.buf_;
         dealloctor_ = std::exchange(other.dealloctor_, &AllocT::empty_dealloc);
         castImpl_ = other.castImpl_;
         return *this;
@@ -92,8 +93,24 @@ class __Any {
     ~__Any() { dealloctor_(buf_); }
 
     template <typename T>
-    T as() {
-        return reinterpret_cast<T (*)(void*)>(castImpl_)(buf_);
+    T& as() {
+        return reinterpret_cast<T& (*)(__Any*)>(castImpl_)(this);
+    }
+
+    template <typename T>
+    T& getReference() {
+        return *reinterpret_cast<T*>(buf_);
+    }
+
+    template <typename T>
+    operator T() {
+        this->as<T>();
+    }
+
+    template <typename T>
+    T release() {
+        dealloctor_ = &AllocT::empty_dealloc;
+        return std::move(this->as<T>());
     }
 
    private:
@@ -105,20 +122,20 @@ class __Any {
     }
 
     template <typename T>
-    static T as_dc(void* buf) {
-        return reinterpret_cast<T>(buf);
+    static T& as_dc(__Any* self) {
+        return reinterpret_cast<T&>(self->buf_);
     }
 
     template <typename T>
-    static T as_bv(void* buf) {
+    static T& as_bv(__Any* self) {
         using ValueT = typename std::remove_reference<T>::type;
-        return *reinterpret_cast<ValueT*>(buf);
+        return *reinterpret_cast<ValueT*>(self->buf_);
     }
 
     template <typename T>
-    static T& as_br(void* buf) {
+    static T& as_br(__Any* self) {
         using ValueT = typename std::remove_reference<T>::type;
-        return *reinterpret_cast<ValueT*>(buf);
+        return *reinterpret_cast<ValueT*>(self->buf_);
     }
 
    private:
@@ -130,11 +147,11 @@ class __Any {
 
 using Any = __Any<>;
 
-template <typename T>
+template <typename F, typename RF>
 struct Invoker;
 
 template <typename R, typename... Args>
-struct Invoker<R(Args...)> {
+struct Invoker<R(Args...), R> {
     template <size_t... idx>
     static R __InvokeImplement(void* funcPtr, Any* args,
                                std::index_sequence<idx...> = {}) {
@@ -148,8 +165,25 @@ struct Invoker<R(Args...)> {
     }
 };
 
+template <typename R, typename... Args, typename U>
+struct Invoker<R(Args...), U> {
+    template <size_t... idx>
+    static R __InvokeImplement(void* funcPtr, Any* args,
+                               std::index_sequence<idx...> = {}) {
+        return reinterpret_cast<R (*)(Args...)>(funcPtr)(
+            args[idx].template as<Args>()...);
+    }
+
+    static U InvokeImplement(void* funcPtr, Any* args) {
+        static_assert(std::is_convertible<R, U>::value,
+                      "R and U can't convertible!");
+        return __InvokeImplement(funcPtr, args,
+                                 std::make_index_sequence<sizeof...(Args)>());
+    }
+};
+
 template <typename... Args>
-struct Invoker<void(Args...)> {
+struct Invoker<void, void(Args...)> {
     template <size_t... idx>
     static void __InvokeImplement(void* funcPtr, Any* args,
                                   std::index_sequence<idx...> = {}) {
@@ -217,7 +251,7 @@ class Functor : public SpecialFunctorBase<U> {
 
     template <typename R, typename... Args>
     explicit Functor(R (*ptr)(Args...))
-        : Base(&Invoker<R(Args...)>::InvokeImplement,
+        : Base(&Invoker<R(Args...), U>::InvokeImplement,
                reinterpret_cast<void*>(ptr),
                reinterpret_cast<Any*>(
                    AllocT::alloc(sizeof(Any) * sizeof...(Args)))),
@@ -251,9 +285,7 @@ class Functor : public SpecialFunctorBase<U> {
     }
 
     template <typename T>
-    typename std::enable_if_t<
-        std::is_reference<std::remove_reference_t<T>>::value>
-    capture(size_t argIndex, T&& arg) {
+    void captureByReference(size_t argIndex, T&& arg) {
         this->args_[argIndex] =
             Any(std::forward<T>(arg), Any::by_reference_tag());
     }
@@ -286,6 +318,35 @@ class Functor : public SpecialFunctorBase<U> {
 
    private:
     void (*args_destructor_)(Any* any);
+};
+
+class OpFunctor : public Functor<Any> {
+   public:
+    template <typename R, typename... Args>
+    OpFunctor(R (*ptr)(Args...)) : Functor<Any>::Functor(ptr) {
+        result_ = R{};
+        feed_placeholder_ = [this](Any& result) {
+            result_.as<R>() = result.release<R>();
+        };
+    }
+
+    void operator()() {
+        Any result = Functor<Any>::operator()();
+        feed_placeholder_(result);
+    }
+
+    // TODO: return placeHold type and call capture,
+    // then remove capture by reference
+    template <typename T>
+    T& getResult() {
+        return result_.as<T>();
+    }
+
+    Any* getArgs() { return this->args_; }
+
+   private:
+    Any result_;
+    std::function<void(Any& result)> feed_placeholder_;
 };
 
 }  // namespace support

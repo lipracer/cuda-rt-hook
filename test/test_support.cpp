@@ -1,6 +1,7 @@
 
 #include <stdlib.h>
 
+#include <algorithm>
 #include <numeric>
 
 #include "gtest/gtest.h"
@@ -138,11 +139,126 @@ TEST(SupportTest, functor_any_destructor) {
     }
 }
 
-TEST(SupportTest, functor_ctor) { 
+TEST(SupportTest, any_improve) {
+    std::shared_ptr<int> sp(new int);
+    support::Any any = sp;
+    EXPECT_EQ(sp.use_count(), 2);
+    auto sp0 = any.release<std::shared_ptr<int>>();
+    EXPECT_EQ(sp.use_count(), 2);
+}
+
+TEST(SupportTest, functor_ctor) {
     std::vector<support::Functor<int>> functors;
 
     Functor<int> functor(&rt_malloc);
     functor.capture(0, nullptr);
     functor.capture(1, 1);
     functors.emplace_back(std::move(functor));
+}
+
+static auto scalar_add(int a, int b) { return a + b; }
+
+static auto scalar_sub(int a, int b) { return a - b; }
+
+TEST(SupportTest, opfunctor_scalar) {
+    int a = 1, b = 2;
+
+    OpFunctor functor0(&scalar_add);
+    functor0.capture(0, a);
+    functor0.capture(1, b);
+
+    OpFunctor functor1(&scalar_sub);
+    functor1.captureByReference(0, functor0.getResult<int>());
+    functor1.capture(1, a);
+
+    functor0();
+    functor1();
+
+    EXPECT_EQ(functor1.getResult<int>(), b);
+}
+
+using Dim = int64_t;
+
+struct Tensor {
+    std::shared_ptr<void> storage;
+    std::vector<Dim> shape;
+    Dim totalSize;
+
+    template <typename T>
+    T& getElement(Dim index) const {
+        return reinterpret_cast<T*>(storage.get())[index];
+    }
+
+    template <typename T>
+    using iterator = T*;
+
+    template <typename T>
+    iterator<T> element_begin() const {
+        return &getElement<T>(0);
+    }
+
+    template <typename T>
+    iterator<T> element_end() const {
+        return &getElement<T>(totalSize);
+    }
+};
+
+std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
+    os << "storage:" << tensor.storage.get();
+    return os;
+}
+
+template <typename T>
+Tensor apply_empty(const std::vector<Dim>& shape) {
+    Dim n =
+        std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<Dim>());
+    return Tensor{.storage = std::shared_ptr<void>(new T[n]),
+                  .shape = shape,
+                  .totalSize = n};
+}
+
+template <typename T, template <typename> typename OpT>
+static Tensor arith_op(const Tensor& lhs, const Tensor& rhs) {
+    size_t n = std::accumulate(lhs.shape.begin(), lhs.shape.end(), 1,
+                               std::multiplies<>());
+    Tensor result = apply_empty<float>({3, 4});
+    for (size_t i = 0; i < n; ++i) {
+        result.getElement<float>(i) =
+            OpT<T>()(lhs.getElement<float>(i), rhs.getElement<float>(i));
+    }
+    return result;
+}
+
+static Tensor add(const Tensor& lhs, const Tensor& rhs) {
+    return arith_op<float, std::plus>(lhs, rhs);
+}
+
+static Tensor sub(Tensor lhs, Tensor rhs) {
+    return arith_op<float, std::minus>(lhs, rhs);
+}
+
+TEST(SupportTest, opfunctor_tensor) {
+    Tensor param0 = apply_empty<float>({3, 4});
+    Tensor param1 = apply_empty<float>({3, 4});
+    std::iota(param0.element_begin<float>(), param0.element_end<float>(), 0);
+    std::iota(param1.element_begin<float>(), param1.element_end<float>(), 0);
+
+    OpFunctor functor0(&add);
+    functor0.capture(0, param0);
+    functor0.capture(1, param1);
+
+    OpFunctor functor1(&sub);
+    functor1.captureByReference(0, functor0.getResult<Tensor>());
+    functor1.capture(1, param1);
+
+    functor0();
+    functor1();
+
+    Tensor& tensor = functor1.getResult<Tensor>();
+    auto float_eq = [](float lhs, float rhs) {
+        return std::abs(lhs - rhs) <= std::numeric_limits<float>::epsilon();
+    };
+    EXPECT_TRUE(std::equal(param0.element_begin<float>(),
+                           param0.element_end<float>(),
+                           tensor.element_begin<float>(), float_eq));
 }
