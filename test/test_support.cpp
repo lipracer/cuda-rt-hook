@@ -336,6 +336,7 @@ static std::vector<Tensor> getVectorResult(size_t size) {
     return result;
 }
 
+// TODO: check any cast type at runtime
 TEST(SupportTest, opfunctor_accessor) {
     OpFunctor params(&getVectorResult);
     OpFunctor addFunc(&add);
@@ -343,7 +344,7 @@ TEST(SupportTest, opfunctor_accessor) {
     addFunc.captureVector(0, params.getResult<std::vector<Tensor>>(), 1);
     addFunc.captureVector(1, params.getResult<std::vector<Tensor>>(), 2);
 
-    params(4);
+    params(size_t{4});
     addFunc();
 
     for (auto& t : params.getResult<std::vector<Tensor>>().get()) {
@@ -351,7 +352,7 @@ TEST(SupportTest, opfunctor_accessor) {
     }
     std::cout << addFunc.getResult<Tensor>() << std::endl;
 
-    auto tensors = getVectorResult(4);
+    auto tensors = getVectorResult(size_t{4});
     auto direct_result = add(tensors[1], tensors[2]);
     EXPECT_TRUE(std::equal(direct_result.element_begin<float>(),
                            direct_result.element_end<float>(),
