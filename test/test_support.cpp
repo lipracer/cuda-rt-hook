@@ -192,6 +192,29 @@ TEST(SupportTest, functor_member_func) {
     EXPECT_EQ(functor_s.getResult<int>(), 8);
 }
 
+TEST(SupportTest, functor_member_func_direct_capture) {
+    std::vector<int> vec_int = {1, 2, 3, 4, 5, 6};
+    using VecInt = std::vector<int>;
+    OpFunctor functor(vector_add);
+    functor.capture(0, vec_int);
+    functor.capture(1, vec_int);
+
+    OpFunctor functor_s(scalar_add);
+    functor_s.captureVector(0, functor.getResult<VecInt>(), 2);
+    functor_s.capture(1, 2);
+
+    functor();
+    functor_s();
+    EXPECT_EQ(functor_s.getResult<int>(), 8);
+}
+
+TEST(SupportTest, functor_member_func_partial_arg) {
+    OpFunctor functor(scalar_add);
+    functor.capture(0, 1);
+    functor(2);
+    EXPECT_EQ(functor.getResult<int>(), 3);
+}
+
 TEST(SupportTest, opfunctor_scalar) {
     int a = 1, b = 2;
 
@@ -236,7 +259,11 @@ struct Tensor {
 };
 
 std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
-    os << "storage:" << tensor.storage.get();
+    os << "storage:" << tensor.storage.get() << " data:[";
+    for (Dim i = 0; i < tensor.totalSize; ++i) {
+        std::cout << *(tensor.element_begin<float>() + i) << " ";
+    }
+    os << "]";
     return os;
 }
 
@@ -253,7 +280,7 @@ template <typename T, template <typename> typename OpT>
 static Tensor arith_op(const Tensor& lhs, const Tensor& rhs) {
     size_t n = std::accumulate(lhs.shape.begin(), lhs.shape.end(), 1,
                                std::multiplies<>());
-    Tensor result = apply_empty<float>({3, 4});
+    Tensor result = apply_empty<float>(lhs.shape);
     for (size_t i = 0; i < n; ++i) {
         result.getElement<float>(i) =
             OpT<T>()(lhs.getElement<float>(i), rhs.getElement<float>(i));
@@ -267,6 +294,10 @@ static Tensor add(const Tensor& lhs, const Tensor& rhs) {
 
 static Tensor sub(Tensor lhs, Tensor rhs) {
     return arith_op<float, std::minus>(lhs, rhs);
+}
+
+auto float_eq(float lhs, float rhs) {
+    return std::abs(lhs - rhs) <= std::numeric_limits<float>::epsilon();
 }
 
 TEST(SupportTest, opfunctor_tensor) {
@@ -287,10 +318,42 @@ TEST(SupportTest, opfunctor_tensor) {
     functor1();
 
     Tensor& tensor = functor1.getResult<Tensor>();
-    auto float_eq = [](float lhs, float rhs) {
-        return std::abs(lhs - rhs) <= std::numeric_limits<float>::epsilon();
-    };
+
     EXPECT_TRUE(std::equal(param0.element_begin<float>(),
                            param0.element_end<float>(),
                            tensor.element_begin<float>(), float_eq));
+}
+
+static std::vector<Tensor> getVectorResult(size_t size) {
+    std::vector<Tensor> result;
+    std::vector<Dim> shape{2, 3};
+    for (size_t i = 0; i < size; ++i) {
+        result.push_back(apply_empty<float>(shape));
+        for (Dim j = 0; j < result.back().totalSize; ++j) {
+            result.back().element_begin<float>()[j] = i * 2 * 3 + j + 1;
+        }
+    }
+    return result;
+}
+
+TEST(SupportTest, opfunctor_accessor) {
+    OpFunctor params(&getVectorResult);
+    OpFunctor addFunc(&add);
+
+    addFunc.captureVector(0, params.getResult<std::vector<Tensor>>(), 1);
+    addFunc.captureVector(1, params.getResult<std::vector<Tensor>>(), 2);
+
+    params(4);
+    addFunc();
+
+    for (auto& t : params.getResult<std::vector<Tensor>>().get()) {
+        std::cout << t << std::endl;
+    }
+    std::cout << addFunc.getResult<Tensor>() << std::endl;
+
+    auto tensors = getVectorResult(4);
+    auto direct_result = add(tensors[1], tensors[2]);
+    EXPECT_TRUE(std::equal(direct_result.element_begin<float>(),
+                           direct_result.element_end<float>(),
+                           direct_result.element_begin<float>(), float_eq));
 }

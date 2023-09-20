@@ -204,6 +204,9 @@ class FunctorBase {
     InvokePtrT invoker_{nullptr};
     void* funcPtr_{nullptr};
     Any* args_{nullptr};
+    size_t bindSize_{0};
+
+    FunctorBase() = default;
     FunctorBase(InvokePtrT i, void* f, Any* a)
         : invoker_(i), funcPtr_(f), args_(a) {}
 
@@ -215,8 +218,11 @@ class FunctorBase {
         std::swap(this->funcPtr_, other.funcPtr_);
         std::swap(this->invoker_, other.invoker_);
         this->args_ = std::exchange(other.args_, nullptr);
+        bindSize_ = other.bindSize_;
         return *this;
     }
+
+    void increaseBindSize() { ++bindSize_; }
 
     // TODO support
     FunctorBase(const FunctorBase& other) = delete;
@@ -230,7 +236,19 @@ class SpecialFunctorBase : public FunctorBase<R> {
     using Base::Base;
     using InvokePtrT = R (*)(void*, Any*);
 
-    R operator()() { return this->invoker_(this->funcPtr_, this->args_); }
+    template <typename... Args, size_t... idx>
+    void captureExternArgs(std::index_sequence<idx...>, Args&&... args) {
+        (void)std::initializer_list<int>{
+            (this->args_[this->bindSize_ + idx] = std::forward<Args>(args),
+             0)...};
+    }
+
+    template <typename... Args>
+    R operator()(Args&&... args) {
+        captureExternArgs(std::make_index_sequence<sizeof...(Args)>(),
+                          std::forward<Args>(args)...);
+        return this->invoker_(this->funcPtr_, this->args_);
+    }
 };
 
 template <>
@@ -240,7 +258,19 @@ class SpecialFunctorBase<void> : public FunctorBase<void> {
     using Base::Base;
     using InvokePtrT = void (*)(void*, Any*);
 
-    void operator()() { this->invoker_(this->funcPtr_, this->args_); }
+    template <typename... Args, size_t... idx>
+    void captureExternArgs(std::index_sequence<idx...>, Args&&... args) {
+        (void)std::initializer_list<int>{
+            (this->args_[this->bindSize_ + idx] = std::forward<Args>(args),
+             0)...};
+    }
+
+    template <typename... Args>
+    void operator()(Args&&... args) {
+        captureExternArgs(std::make_index_sequence<sizeof...(Args)>(),
+                          std::forward<Args>(args)...);
+        this->invoker_(this->funcPtr_, this->args_);
+    }
 };
 
 template <typename U, typename AllocT = SimpleAllocater>
@@ -248,6 +278,8 @@ class Functor : public SpecialFunctorBase<U> {
    public:
     using Base = SpecialFunctorBase<U>;
     using Base::Base;
+
+    Functor() = default;
 
     template <typename R, typename... Args>
     explicit Functor(R (*ptr)(Args...))
@@ -281,11 +313,13 @@ class Functor : public SpecialFunctorBase<U> {
     typename std::enable_if_t<
         !std::is_reference<std::remove_reference_t<T>>::value>
     capture(size_t argIndex, T&& arg) {
+        this->increaseBindSize();
         this->args_[argIndex] = Any(std::forward<T>(arg), Any::by_value_tag());
     }
 
     template <typename T>
     void captureByReference(size_t argIndex, T&& arg) {
+        this->increaseBindSize();
         this->args_[argIndex] =
             Any(std::forward<T>(arg), Any::by_reference_tag());
     }
@@ -294,16 +328,24 @@ class Functor : public SpecialFunctorBase<U> {
     typename std::enable_if_t<
         std::is_rvalue_reference<std::remove_reference_t<T>>::value>
     capture(size_t argIndex, T&& arg) {
+        this->increaseBindSize();
         this->args_[argIndex] = Any(std::forward<T>(arg), Any::by_value_tag());
     }
 
     template <typename T>
     void captureByDeepCopy(size_t argIndex, T&& arg, size_t size) {
+        this->increaseBindSize();
         static_assert(
             std::is_pointer<typename std::remove_reference<T>::type>::value,
             "deep copy must pointer type.");
         this->args_[argIndex] =
             Any(std::forward<T>(arg), size, Any::by_deepcopy_tag());
+    }
+
+    template <typename... Args>
+    void captureVariadic(Args&&... args) {
+        (void)std::initializer_list<int>{
+            (capture(this->bindSize_, std::forward<Args>(args)), 0)...};
     }
 
    private:
@@ -325,6 +367,11 @@ auto __internal_operator_square_brackets(T& t, size_t index) {
     return t[index];
 }
 
+template <typename T>
+void __internal_operator_move_func(T& t, T&& other) {
+    t = std::move(other);
+}
+
 class OpFunctor : public Functor<Any> {
    public:
     using Functor<Any>::capture;
@@ -342,22 +389,52 @@ class OpFunctor : public Functor<Any> {
         }
     };
 
-    template <typename R, typename... Args>
-    OpFunctor(R (*ptr)(Args...)) : Functor<Any>::Functor(ptr) {
-        result_ = R{};
-        feed_placeholder_ = [this](Any& result) {
-            result_.as<R>() = result.release<R>();
-        };
+    struct LazyFeedFuncs {
+        Functor<void> func;
+        LazyFeedFuncs* next{nullptr};
+    };
+
+    template <typename R>
+    static void __feed_placeholder(Any* self, Any* result) {
+        self->as<R>() = result->release<R>();
     }
 
-    void operator()() {
-        Any result = Functor<Any>::operator()();
-        feed_placeholder_(result);
+    template <typename R, typename... Args>
+    OpFunctor(R (*ptr)(Args...))
+        : Functor<Any>::Functor(ptr), feed_placeholder_(__feed_placeholder<R>) {
+        result_ = R{};
+    }
+
+    template <typename... Args>
+    void operator()(Args&&... args) {
+        auto curFunc = lazyFeedFuncs_;
+        while (curFunc) {
+            curFunc->func();
+            curFunc = curFunc->next;
+        }
+        Any result = Functor<Any>::operator()(std::forward<Args>(args)...);
+        feed_placeholder_(&result_, &result);
     }
 
     template <typename T>
     void capture(size_t index, PlaceHolder<T> ph) {
         Functor<Any>::captureByReference(index, ph.get());
+    }
+
+    template <typename ObjT>
+    void captureVector(size_t index, PlaceHolder<ObjT> ph, size_t vecIndex) {
+        auto func =
+            new (SimpleAllocater::alloc(sizeof(LazyFeedFuncs))) LazyFeedFuncs();
+        func->func = Functor<void>(&__lazy_capture<ObjT>);
+        func->func.captureVariadic(this, index, ph, vecIndex);
+        func->next = lazyFeedFuncs_;
+        lazyFeedFuncs_ = func;
+    }
+
+    template <typename ObjT>
+    static void __lazy_capture(OpFunctor* self, size_t index,
+                               PlaceHolder<ObjT> ph, size_t vecIndex) {
+        self->captureByReference(index, ph.get()[vecIndex]);
     }
 
     template <typename T>
@@ -369,7 +446,8 @@ class OpFunctor : public Functor<Any> {
 
    private:
     Any result_;
-    std::function<void(Any& result)> feed_placeholder_;
+    Functor<void> feed_placeholder_;
+    LazyFeedFuncs* lazyFeedFuncs_{nullptr};
 };
 
 }  // namespace support
