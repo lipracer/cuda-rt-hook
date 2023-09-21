@@ -11,12 +11,12 @@
 using namespace support;
 
 int wrap_rt_malloc(void** ptr, size_t size) {
-    LOG(DEBUG) << __func__ << " ptr:" << ptr << " size:" << size;
+    LOG(WARN) << __func__ << " ptr:" << ptr << " size:" << size;
     return 0;
 }
 
 int rt_malloc(void** ptr, size_t size) {
-    LOG(DEBUG) << __func__ << " ptr:" << ptr << " size:" << size;
+    LOG(WARN) << __func__ << " ptr:" << ptr << " size:" << size;
     Functor<int> functor(&wrap_rt_malloc);
     functor.capture(0, ptr);
     functor.capture(1, size);
@@ -25,14 +25,14 @@ int rt_malloc(void** ptr, size_t size) {
 }
 
 int wrap_set_parameter(size_t index, void* ptr, size_t size) {
-    LOG(DEBUG) << __func__ << " index:" << index << " ptr:" << ptr
-               << " size:" << size;
+    LOG(WARN) << __func__ << " index:" << index << " ptr:" << ptr
+              << " size:" << size;
     return 0;
 }
 
 int set_parameter(size_t index, void* ptr, size_t size) {
-    LOG(DEBUG) << __func__ << " index:" << index << " ptr:" << ptr
-               << " size:" << size;
+    LOG(WARN) << __func__ << " index:" << index << " ptr:" << ptr
+              << " size:" << size;
     Functor<int> functor(&wrap_set_parameter);
     functor.capture(0, index);
     functor.captureByDeepCopy(1, ptr, size);
@@ -42,12 +42,12 @@ int set_parameter(size_t index, void* ptr, size_t size) {
 }
 
 int wrap_config_hw(void* s, int ng, int nb) {
-    LOG(DEBUG) << __func__ << " s:" << s << " ng:" << ng << " nb:" << nb;
+    LOG(WARN) << __func__ << " s:" << s << " ng:" << ng << " nb:" << nb;
     return 0;
 }
 
 int config_hw(void* s, int ng, int nb) {
-    LOG(DEBUG) << __func__ << " s:" << s << " ng:" << ng << " nb:" << nb;
+    LOG(WARN) << __func__ << " s:" << s << " ng:" << ng << " nb:" << nb;
     Functor<int> functor(&wrap_config_hw);
     functor.captureByDeepCopy(0, s, 4);
     functor.capture(1, ng);
@@ -267,7 +267,7 @@ struct Tensor {
 std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
     os << "storage:" << tensor.storage.get() << " data:[";
     for (Dim i = 0; i < tensor.totalSize; ++i) {
-        std::cout << *(tensor.element_begin<float>() + i) << " ";
+        os << *(tensor.element_begin<float>() + i) << " ";
     }
     os << "]";
     return os;
@@ -353,9 +353,9 @@ TEST(SupportTest, opfunctor_accessor_vector) {
     addFunc();
 
     for (auto& t : params.getResult<std::vector<Tensor>>().get()) {
-        std::cout << t << std::endl;
+        LOG(WARN) << t;
     }
-    std::cout << addFunc.getResult<Tensor>() << std::endl;
+    LOG(WARN) << addFunc.getResult<Tensor>();
 
     auto tensors = getVectorResult(size_t{4});
     auto direct_result = add(tensors[1], tensors[2]);
@@ -400,8 +400,8 @@ TEST(SupportTest, opfunctor_accessor_tuple) {
     std::get<1>(tt) += 1;
     scalar_addFunc();
 
-    std::cout << tensor_addFunc.getResult<Tensor>() << std::endl;
-    std::cout << scalar_addFunc.getResult<size_t>() << std::endl;
+    LOG(WARN) << tensor_addFunc.getResult<Tensor>();
+    LOG(WARN) << scalar_addFunc.getResult<size_t>();
 
     EXPECT_EQ(scalar_addFunc.getResult<size_t>(), 18);
 }

@@ -26,7 +26,7 @@
 
 namespace logger {
 
-enum class LogLevel { info = 0, debug, warning, error };
+enum class LogLevel { info = 0, warning, error, fatal };
 
 struct StringLiteralBase {
     constexpr StringLiteralBase(size_t N) {
@@ -93,7 +93,9 @@ class LogStream {
     LogLevel getLevel() const { return level_; }
 
     const char* getStrLevel(LogLevel level) {
-        constexpr const char* str[] = {"INFO", "DEBUG", "WARN", "ERROR"};
+        constexpr const char* str[] = {
+            "\033[0;32mINFO\033[0m", "\033[0;33mWARN\033[0m",
+            "\033[0;31mERROR\033[0m", "\033[0;31mFATAL\033[0m"};
         return str[static_cast<int>(level)];
     }
 
@@ -126,7 +128,7 @@ struct LogWrapper {
             << "[" << LogStream::instance().getStrLevel(level) << "]"
             << "[TID:" << LogStream::threadId() << "]";
     }
-    explicit LogWrapper(int level) : level_(static_cast<LogLevel>(level)) {}
+    explicit LogWrapper(int level) : LogWrapper(static_cast<LogLevel>(level)) {}
     ~LogWrapper() {
         if (LOG_CONDITATION(level_)) {
             LogStream::instance().flush();
@@ -271,17 +273,19 @@ void initLogger(const LogConfig& = LogConfig{});
 }  // namespace logger
 
 #define INFO logger::LogLevel::info
-#define DEBUG logger::LogLevel::debug
 #define WARN logger::LogLevel::warning
 #define ERROR logger::LogLevel::error
+#define FATAL logger::LogLevel::fatal
 
-#define LOG(level)                                                           \
+#define LOG_IMPL(level)                                                      \
     !LOG_CONDITATION(level)                                                  \
         ? void(0)                                                            \
         : logger::StreamPlaceHolder() <                                      \
               logger::LogWrapper(level)                                      \
                   << "[" << logger::makeStringLiteral(__FILE__).simpleFile() \
                   << ":" << std::dec << __LINE__ << "]"
+
+#define LOG(level) LOG_IMPL(static_cast<int>(level))
 
 #define CHECK(p, ...)                                            \
     do {                                                         \

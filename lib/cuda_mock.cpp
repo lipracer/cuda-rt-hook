@@ -51,7 +51,7 @@ int builtin_printf(int flag, const char* fmt, va_list argp) {
     constexpr size_t kMax = 1024;
     char buf[kMax] = {"myprintf "};
     snprintf(buf + strlen(buf), kMax - strlen(buf), fmt, argp);
-    LOG(DEBUG) << buf;
+    LOG(INFO) << buf;
     return 0;
 }
 
