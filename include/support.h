@@ -38,6 +38,7 @@ class SimpleAllocater {
     static void empty_dealloc(void* ptr) {}
 };
 
+// TODO: check any cast type at runtime
 template <typename AllocT = SimpleAllocater>
 class __Any {
    public:
@@ -81,6 +82,11 @@ class __Any {
             &__Any<AllocT>::as_br<std::remove_reference_t<T>>);
     }
 
+    __Any(void* obj, by_reference_tag) {
+        buf_ = obj;
+        castImpl_ = reinterpret_cast<void*>(&__Any<AllocT>::as_opaque);
+    }
+
     template <typename T>
     __Any(T&& t, size_t size, by_deepcopy_tag) : dealloctor_(&AllocT::dealloc) {
         buf_ = AllocT::alloc(size);
@@ -113,6 +119,8 @@ class __Any {
         return std::move(this->as<T>());
     }
 
+    void* data() const { return buf_; }
+
    private:
     template <typename T>
     static void destruct(void* buf) {
@@ -137,6 +145,8 @@ class __Any {
         using ValueT = typename std::remove_reference<T>::type;
         return *reinterpret_cast<ValueT*>(self->buf_);
     }
+
+    static void* as_opaque(__Any* self) { return self->buf_; }
 
    private:
     void* buf_{nullptr};
@@ -324,6 +334,11 @@ class Functor : public SpecialFunctorBase<U> {
             Any(std::forward<T>(arg), Any::by_reference_tag());
     }
 
+    void captureByReference(size_t argIndex, void* arg) {
+        this->increaseBindSize();
+        this->args_[argIndex] = Any(arg, Any::by_reference_tag());
+    }
+
     template <typename T>
     typename std::enable_if_t<
         std::is_rvalue_reference<std::remove_reference_t<T>>::value>
@@ -371,6 +386,46 @@ template <typename T>
 void __internal_operator_move_func(T& t, T&& other) {
     t = std::move(other);
 }
+
+class OpFunctor;
+
+template <typename VectorT>
+class LazyViewVector {
+   public:
+    LazyViewVector(OpFunctor* productor, size_t index)
+        : productor(productor), index(index) {}
+
+    static void LazyViewVectorImpl(size_t argIndex, Any* productor,
+                                   OpFunctor* consumer, size_t index);
+
+    auto get(OpFunctor* consumer, size_t argIndex) {
+        Functor<void> impl(LazyViewVectorImpl);
+        impl.captureVariadic(argIndex, productor, consumer, index);
+        return std::move(impl);
+    }
+
+   private:
+    OpFunctor* productor;
+    size_t index;
+};
+
+template <typename TupleT, size_t index>
+class LazyViewTuple {
+   public:
+    LazyViewTuple(OpFunctor* productor) : productor(productor) {}
+
+    static void LazyViewTupleImpl(size_t argIndex, Any* productor,
+                                  OpFunctor* consumer);
+
+    auto get(OpFunctor* consumer, size_t argIndex) {
+        Functor<void> impl(LazyViewTupleImpl);
+        impl.captureVariadic(argIndex, productor, consumer);
+        return std::move(impl);
+    }
+
+   private:
+    OpFunctor* productor;
+};
 
 class OpFunctor : public Functor<Any> {
    public:
@@ -421,26 +476,62 @@ class OpFunctor : public Functor<Any> {
         Functor<Any>::captureByReference(index, ph.get());
     }
 
+    template <typename T, template <typename> typename ContainerT,
+              typename = typename std::enable_if<
+                  std::is_same<std::vector<T>, ContainerT<T>>::value>::type>
+    void capture(size_t index, PlaceHolder<ContainerT<T>> ph,
+                 size_t containerIndex) {
+        captureVector(index, ph, containerIndex);
+    }
+
+    template <size_t Index, typename... Args,
+              template <typename> typename ContainerT,
+              typename = typename std::enable_if<std::is_same<
+                  std::tuple<Args...>, ContainerT<Args...>>::value>::type>
+    void capture(size_t index, PlaceHolder<ContainerT<Args...>> ph) {
+        captureTuple<Index>(index, ph);
+    }
+
     template <typename ObjT>
     void captureVector(size_t index, PlaceHolder<ObjT> ph, size_t vecIndex) {
         auto func =
             new (SimpleAllocater::alloc(sizeof(LazyFeedFuncs))) LazyFeedFuncs();
-        func->func = Functor<void>(&__lazy_capture<ObjT>);
+        func->func = Functor<void>(&__lazy_capture_element_of_vector<ObjT>);
         func->func.captureVariadic(this, index, ph, vecIndex);
         func->next = lazyFeedFuncs_;
         lazyFeedFuncs_ = func;
     }
 
+    template <size_t Index, typename ObjT>
+    void captureTuple(size_t index, PlaceHolder<ObjT> ph) {
+        auto func =
+            new (SimpleAllocater::alloc(sizeof(LazyFeedFuncs))) LazyFeedFuncs();
+        func->func =
+            Functor<void>(&__lazy_capture_element_of_tuple<Index, ObjT>);
+        func->func.captureVariadic(this, index, ph);
+        func->next = lazyFeedFuncs_;
+        lazyFeedFuncs_ = func;
+    }
+
     template <typename ObjT>
-    static void __lazy_capture(OpFunctor* self, size_t index,
-                               PlaceHolder<ObjT> ph, size_t vecIndex) {
+    static void __lazy_capture_element_of_vector(OpFunctor* self, size_t index,
+                                                 PlaceHolder<ObjT> ph,
+                                                 size_t vecIndex) {
         self->captureByReference(index, ph.get()[vecIndex]);
+    }
+
+    template <size_t Index, typename ObjT>
+    static void __lazy_capture_element_of_tuple(OpFunctor* self, size_t index,
+                                                PlaceHolder<ObjT> ph) {
+        self->captureByReference(index, std::get<Index>(ph.get()));
     }
 
     template <typename T>
     PlaceHolder<T> getResult() {
         return PlaceHolder<T>(result_.as<T>());
     }
+
+    Any* getResult() { return &result_; }
 
     Any* getArgs() { return this->args_; }
 
@@ -449,5 +540,22 @@ class OpFunctor : public Functor<Any> {
     Functor<void> feed_placeholder_;
     LazyFeedFuncs* lazyFeedFuncs_{nullptr};
 };
+
+template <typename VectorT>
+void LazyViewVector<VectorT>::LazyViewVectorImpl(size_t argIndex,
+                                                 Any* productor,
+                                                 OpFunctor* consumer,
+                                                 size_t index) {
+    consumer->captureByReference(argIndex,
+                                 productor->template as<VectorT>()[index]);
+}
+
+template <typename TupleT, size_t index>
+void LazyViewTuple<TupleT, index>::LazyViewTupleImpl(size_t argIndex,
+                                                     Any* productor,
+                                                     OpFunctor* consumer) {
+    consumer->captureByReference(
+        argIndex, std::get<index>(productor->template as<TupleT>()));
+}
 
 }  // namespace support

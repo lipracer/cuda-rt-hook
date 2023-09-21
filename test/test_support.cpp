@@ -156,9 +156,15 @@ TEST(SupportTest, functor_ctor) {
     functors.emplace_back(std::move(functor));
 }
 
-static auto scalar_add(int a, int b) { return a + b; }
+template <typename T = int>
+static auto scalar_add(T a, T b) {
+    return a + b;
+}
 
-static auto scalar_sub(int a, int b) { return a - b; }
+template <typename T = int>
+static auto scalar_sub(T a, T b) {
+    return a - b;
+}
 
 static auto vector_add(const std::vector<int>& a, const std::vector<int>& b) {
     std::vector<int> result(a.size());
@@ -182,7 +188,7 @@ TEST(SupportTest, functor_member_func) {
     functor.capture(1, vec_int);
     auto accessor = functor.getResult<VecInt>()[2];
 
-    OpFunctor functor_s(scalar_add);
+    OpFunctor functor_s(scalar_add<>);
     functor_s.capture(0, accessor.getResult<int>());
     functor_s.capture(1, 2);
 
@@ -199,7 +205,7 @@ TEST(SupportTest, functor_member_func_direct_capture) {
     functor.capture(0, vec_int);
     functor.capture(1, vec_int);
 
-    OpFunctor functor_s(scalar_add);
+    OpFunctor functor_s(scalar_add<>);
     functor_s.captureVector(0, functor.getResult<VecInt>(), 2);
     functor_s.capture(1, 2);
 
@@ -209,7 +215,7 @@ TEST(SupportTest, functor_member_func_direct_capture) {
 }
 
 TEST(SupportTest, functor_member_func_partial_arg) {
-    OpFunctor functor(scalar_add);
+    OpFunctor functor(scalar_add<>);
     functor.capture(0, 1);
     functor(2);
     EXPECT_EQ(functor.getResult<int>(), 3);
@@ -218,11 +224,11 @@ TEST(SupportTest, functor_member_func_partial_arg) {
 TEST(SupportTest, opfunctor_scalar) {
     int a = 1, b = 2;
 
-    OpFunctor functor0(&scalar_add);
+    OpFunctor functor0(&scalar_add<>);
     functor0.capture(0, a);
     functor0.capture(1, b);
 
-    OpFunctor functor1(&scalar_sub);
+    OpFunctor functor1(&scalar_sub<>);
     functor1.capture(0, functor0.getResult<int>());
     functor1.capture(1, a);
 
@@ -336,13 +342,12 @@ static std::vector<Tensor> getVectorResult(size_t size) {
     return result;
 }
 
-// TODO: check any cast type at runtime
-TEST(SupportTest, opfunctor_accessor) {
+TEST(SupportTest, opfunctor_accessor_vector) {
     OpFunctor params(&getVectorResult);
     OpFunctor addFunc(&add);
 
-    addFunc.captureVector(0, params.getResult<std::vector<Tensor>>(), 1);
-    addFunc.captureVector(1, params.getResult<std::vector<Tensor>>(), 2);
+    addFunc.capture(0, params.getResult<std::vector<Tensor>>(), 1);
+    addFunc.capture(1, params.getResult<std::vector<Tensor>>(), 2);
 
     params(size_t{4});
     addFunc();
@@ -357,4 +362,46 @@ TEST(SupportTest, opfunctor_accessor) {
     EXPECT_TRUE(std::equal(direct_result.element_begin<float>(),
                            direct_result.element_end<float>(),
                            direct_result.element_begin<float>(), float_eq));
+}
+
+std::tuple<Tensor, size_t> getTupleResult() {
+    std::tuple<Tensor, size_t> result;
+    std::vector<Dim> shape{2, 3};
+
+    auto tensor = apply_empty<float>(shape);
+    for (Dim j = 0; j < tensor.totalSize; ++j) {
+        tensor.element_begin<float>()[j] = j + 1;
+    }
+
+    return std::make_tuple(tensor, 16);
+}
+
+TEST(SupportTest, opfunctor_accessor_tuple) {
+    OpFunctor params(&getTupleResult);
+    OpFunctor tensor_addFunc(&add);
+    OpFunctor scalar_addFunc(&scalar_add<size_t>);
+
+    auto rhs_tensor = apply_empty<float>({2, 3});
+    for (Dim j = 0; j < rhs_tensor.totalSize; ++j) {
+        rhs_tensor.element_begin<float>()[j] = 6 + j + 1;
+    }
+
+    tensor_addFunc.capture<0>(0,
+                              params.getResult<std::tuple<Tensor, size_t>>());
+    tensor_addFunc.capture(1, rhs_tensor);
+
+    scalar_addFunc.capture<1>(0,
+                              params.getResult<std::tuple<Tensor, size_t>>());
+    scalar_addFunc.capture(1, size_t(1));
+
+    params();
+    tensor_addFunc();
+    auto& tt = params.getResult<std::tuple<Tensor, size_t>>().get();
+    std::get<1>(tt) += 1;
+    scalar_addFunc();
+
+    std::cout << tensor_addFunc.getResult<Tensor>() << std::endl;
+    std::cout << scalar_addFunc.getResult<size_t>() << std::endl;
+
+    EXPECT_EQ(scalar_addFunc.getResult<size_t>(), 18);
 }
