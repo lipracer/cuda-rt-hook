@@ -282,7 +282,7 @@ Tensor apply_empty(const std::vector<Dim>& shape) {
                   .totalSize = n};
 }
 
-template <typename T, template <typename> typename OpT>
+template <typename T, template <typename> class OpT>
 static Tensor arith_op(const Tensor& lhs, const Tensor& rhs) {
     size_t n = std::accumulate(lhs.shape.begin(), lhs.shape.end(), 1,
                                std::multiplies<>());

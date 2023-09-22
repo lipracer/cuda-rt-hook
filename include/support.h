@@ -476,19 +476,14 @@ class OpFunctor : public Functor<Any> {
         Functor<Any>::captureByReference(index, ph.get());
     }
 
-    template <typename T, template <typename> typename ContainerT,
-              typename = typename std::enable_if<
-                  std::is_same<std::vector<T>, ContainerT<T>>::value>::type>
-    void capture(size_t index, PlaceHolder<ContainerT<T>> ph,
+    template <typename T>
+    void capture(size_t index, PlaceHolder<std::vector<T>> ph,
                  size_t containerIndex) {
         captureVector(index, ph, containerIndex);
     }
 
-    template <size_t Index, typename... Args,
-              template <typename> typename ContainerT,
-              typename = typename std::enable_if<std::is_same<
-                  std::tuple<Args...>, ContainerT<Args...>>::value>::type>
-    void capture(size_t index, PlaceHolder<ContainerT<Args...>> ph) {
+    template <size_t Index, typename... Args>
+    void capture(size_t index, PlaceHolder<std::tuple<Args...>> ph) {
         captureTuple<Index>(index, ph);
     }
 
