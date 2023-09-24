@@ -101,8 +101,7 @@ class LogStream {
 
     LogConsumer* logConsumer() { return logConsumer_.get(); }
 
-    template <typename T>
-    friend LogStream& operator<<(LogStream& s, T&& t);
+    std::ostream& getStream() { return ss_; }
 
    private:
     LogLevel level_ = LogLevel::warning;
@@ -115,10 +114,25 @@ class LogStream {
     (static_cast<int>((level)) >= \
      static_cast<int>(logger::LogStream::instance().getLevel()))
 
+template <typename T, typename ST = void>
+struct HasToStringFunc : public std::false_type {};
+
+template <typename T>
+struct HasToStringFunc<T, std::__void_t<decltype(std::declval<std::ostream>()
+                                                 << std::declval<T>())>>
+    : public std::true_type {};
+
+template <typename T>
+inline LogStream& WriteToLoggerStream(
+    LogStream& s, T&& t,
+    std::enable_if_t<HasToStringFunc<T>::value>* = nullptr) {
+    s.getStream() << std::forward<T>(t);
+    return s;
+}
+
 template <typename T>
 LogStream& operator<<(LogStream& s, T&& t) {
-    s.ss_ << std::forward<T>(t);
-    return s;
+    return WriteToLoggerStream(s, std::forward<T>(t));
 }
 
 struct LogWrapper {

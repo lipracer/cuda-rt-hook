@@ -193,7 +193,7 @@ struct Invoker<R(Args...), U> {
 };
 
 template <typename... Args>
-struct Invoker<void, void(Args...)> {
+struct Invoker<void(Args...), void> {
     template <size_t... idx>
     static void __InvokeImplement(void* funcPtr, Any* args,
                                   std::index_sequence<idx...> = {}) {
@@ -204,6 +204,23 @@ struct Invoker<void, void(Args...)> {
     static void InvokeImplement(void* funcPtr, Any* args) {
         __InvokeImplement(funcPtr, args,
                           std::make_index_sequence<sizeof...(Args)>());
+    }
+};
+
+template <typename ClsT, typename R, typename... Args>
+struct Invoker<R (ClsT::*)(Args...), R> {
+    using MemPtr = R (ClsT::*)(Args...);
+
+    template <size_t... idx>
+    static R __InvokeImplement(Any* args, std::index_sequence<idx...> = {}) {
+        MemPtr& m_ptr = args[0].as<MemPtr>();
+        ClsT& self = args[1].as<ClsT&>();
+        return (self.*m_ptr)(args[idx + 2].template as<Args>()...);
+    }
+
+    static R InvokeImplement(void*, Any* args) {
+        return __InvokeImplement(args,
+                                 std::make_index_sequence<sizeof...(Args)>());
     }
 };
 
@@ -363,7 +380,7 @@ class Functor : public SpecialFunctorBase<U> {
             (capture(this->bindSize_, std::forward<Args>(args)), 0)...};
     }
 
-   private:
+   protected:
     template <size_t size>
     static void args_destructor(Any* any) {
         if (!any) return;
@@ -373,8 +390,38 @@ class Functor : public SpecialFunctorBase<U> {
         AllocT::dealloc(any);
     }
 
-   private:
-    void (*args_destructor_)(Any* any);
+   protected:
+    void (*args_destructor_)(Any* any){nullptr};
+};
+
+template <typename T>
+class ViewFunctor : Functor<T&> {
+   public:
+    using Functor<T&>::Functor;
+    using Base = Functor<T&>;
+    // using Base::args_destructor;
+    template <typename ClsT, typename R, typename... Args>
+    ViewFunctor(R (ClsT::*ptr)(Args...)) : Base() {
+        this->args_ = reinterpret_cast<Any*>(
+            SimpleAllocater::alloc(sizeof(Any) * (2 + sizeof...(Args))));
+        for (size_t i = 0; i < sizeof...(Args) + 2; ++i) {
+            (void)new (reinterpret_cast<void*>(this->args_ + i)) Any();
+        }
+        this->capture(0, ptr);
+        this->invoker_ = &Invoker<R (ClsT::*)(Args...), R>::InvokeImplement;
+        this->args_destructor_ =
+            &Base::template args_destructor<sizeof...(Args) + 2>;
+    }
+
+    template <typename ClsT, typename... Args>
+    T& operator()(ClsT& obj, Args&&... args) {
+        this->captureByReference(1, obj);
+        this->captureVariadic(std::forward<Args>(args)...);
+        auto& result = this->invoker_(nullptr, this->args_);
+        result_ = Any(result, Any::by_reference_tag());
+        return result;
+    }
+    Any result_;
 };
 
 template <typename T>
