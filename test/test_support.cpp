@@ -5,7 +5,7 @@
 #include <numeric>
 
 #include "gtest/gtest.h"
-#include "logger/logger.h"
+#include "logger/logger_stl.h"
 #include "support.h"
 
 using namespace support;
@@ -404,4 +404,20 @@ TEST(SupportTest, opfunctor_accessor_tuple) {
     LOG(WARN) << scalar_addFunc.getResult<size_t>();
 
     EXPECT_EQ(scalar_addFunc.getResult<size_t>(), 18);
+}
+
+TEST(SupportTest, functor_view) {
+    using Type = std::vector<int>;
+    Type vec_int = {0, 1, 2, 3};
+    ViewFunctor<int> view(&Type::operator[]);
+    view(vec_int, size_t(1)) += 1;
+    LOG(WARN) << vec_int;
+}
+
+TEST(SupportTest, functor_viewo) {
+    using Type = std::vector<int>;
+    Type vec_int = {0, 1, 2, 3};
+    Any any(&vec_int, Any::by_reference_tag());
+    Type& vec = any.as<Type>();
+    LOG(WARN) << vec;
 }

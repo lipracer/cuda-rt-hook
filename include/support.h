@@ -38,9 +38,29 @@ class SimpleAllocater {
     static void empty_dealloc(void* ptr) {}
 };
 
-// TODO: check any cast type at runtime
+struct AnyTypeChecker {
+    const std::type_info* type_info_{nullptr};
+    std::string msg_;
+
+    template <typename T>
+    AnyTypeChecker(T&& t) : type_info_(&typeid(T)) {}
+
+    AnyTypeChecker() = default;
+
+    template <typename T>
+    bool islegal() {
+        if (!type_info_) {
+            return false;
+        }
+        msg_ += std::string("cast ") + __support__demangle(type_info_->name()) +
+                " to " + __support__demangle(typeid(T).name());
+        return typeid(T) == *type_info_;
+    }
+    const std::string& msg() const { return msg_; }
+};
+
 template <typename AllocT = SimpleAllocater>
-class __Any {
+class __Any : public AnyTypeChecker {
    public:
     struct by_value_tag {};
     struct by_reference_tag {};
@@ -57,6 +77,8 @@ class __Any {
         if (this == &other) {
             return *this;
         }
+        static_cast<AnyTypeChecker&>(*this) =
+            static_cast<AnyTypeChecker&>(other);
         // buf_ = std::exchange(other.buf_, nullptr);
         buf_ = other.buf_;
         dealloctor_ = std::exchange(other.dealloctor_, &AllocT::empty_dealloc);
@@ -66,7 +88,8 @@ class __Any {
 
     template <typename T>
     __Any(T&& t, by_value_tag = {})
-        : dealloctor_(
+        : AnyTypeChecker(std::forward<T>(t)),
+          dealloctor_(
               &__Any::destruct<typename std::remove_reference<T>::type>) {
         using ValueT = typename std::remove_reference<T>::type;
         buf_ = AllocT::alloc(sizeof(T));
@@ -76,19 +99,21 @@ class __Any {
     }
 
     template <typename T>
-    __Any(T&& t, by_reference_tag) {
+    __Any(T&& t, by_reference_tag) : AnyTypeChecker(std::forward<T>(t)) {
         buf_ = &t;
         castImpl_ = reinterpret_cast<void*>(
             &__Any<AllocT>::as_br<std::remove_reference_t<T>>);
     }
 
-    __Any(void* obj, by_reference_tag) {
+    template <typename T>
+    __Any(T* obj, by_reference_tag) : AnyTypeChecker(*obj) {
         buf_ = obj;
         castImpl_ = reinterpret_cast<void*>(&__Any<AllocT>::as_opaque);
     }
 
     template <typename T>
-    __Any(T&& t, size_t size, by_deepcopy_tag) : dealloctor_(&AllocT::dealloc) {
+    __Any(T&& t, size_t size, by_deepcopy_tag)
+        : AnyTypeChecker(std::forward<T>(t)), dealloctor_(&AllocT::dealloc) {
         buf_ = AllocT::alloc(size);
         auto buf = reinterpret_cast<char*>(buf_);
         memcpy(buf, std::forward<T>(t), size);
@@ -100,6 +125,7 @@ class __Any {
 
     template <typename T>
     T& as() {
+        assert(this->islegal<T>());
         return reinterpret_cast<T& (*)(__Any*)>(castImpl_)(this);
     }
 
@@ -193,7 +219,7 @@ struct Invoker<R(Args...), U> {
 };
 
 template <typename... Args>
-struct Invoker<void, void(Args...)> {
+struct Invoker<void(Args...), void> {
     template <size_t... idx>
     static void __InvokeImplement(void* funcPtr, Any* args,
                                   std::index_sequence<idx...> = {}) {
@@ -204,6 +230,23 @@ struct Invoker<void, void(Args...)> {
     static void InvokeImplement(void* funcPtr, Any* args) {
         __InvokeImplement(funcPtr, args,
                           std::make_index_sequence<sizeof...(Args)>());
+    }
+};
+
+template <typename ClsT, typename R, typename... Args>
+struct Invoker<R (ClsT::*)(Args...), R> {
+    using MemPtr = R (ClsT::*)(Args...);
+
+    template <size_t... idx>
+    static R __InvokeImplement(Any* args, std::index_sequence<idx...> = {}) {
+        MemPtr& m_ptr = args[0].as<MemPtr>();
+        ClsT& self = args[1].as<ClsT&>();
+        return (self.*m_ptr)(args[idx + 2].template as<Args>()...);
+    }
+
+    static R InvokeImplement(void*, Any* args) {
+        return __InvokeImplement(args,
+                                 std::make_index_sequence<sizeof...(Args)>());
     }
 };
 
@@ -363,7 +406,7 @@ class Functor : public SpecialFunctorBase<U> {
             (capture(this->bindSize_, std::forward<Args>(args)), 0)...};
     }
 
-   private:
+   protected:
     template <size_t size>
     static void args_destructor(Any* any) {
         if (!any) return;
@@ -373,8 +416,38 @@ class Functor : public SpecialFunctorBase<U> {
         AllocT::dealloc(any);
     }
 
-   private:
-    void (*args_destructor_)(Any* any);
+   protected:
+    void (*args_destructor_)(Any* any){nullptr};
+};
+
+template <typename T>
+class ViewFunctor : Functor<T&> {
+   public:
+    using Functor<T&>::Functor;
+    using Base = Functor<T&>;
+    // using Base::args_destructor;
+    template <typename ClsT, typename R, typename... Args>
+    ViewFunctor(R (ClsT::*ptr)(Args...)) : Base() {
+        this->args_ = reinterpret_cast<Any*>(
+            SimpleAllocater::alloc(sizeof(Any) * (2 + sizeof...(Args))));
+        for (size_t i = 0; i < sizeof...(Args) + 2; ++i) {
+            (void)new (reinterpret_cast<void*>(this->args_ + i)) Any();
+        }
+        this->capture(0, ptr);
+        this->invoker_ = &Invoker<R (ClsT::*)(Args...), R>::InvokeImplement;
+        this->args_destructor_ =
+            &Base::template args_destructor<sizeof...(Args) + 2>;
+    }
+
+    template <typename ClsT, typename... Args>
+    T& operator()(ClsT& obj, Args&&... args) {
+        this->captureByReference(1, obj);
+        this->captureVariadic(std::forward<Args>(args)...);
+        auto& result = this->invoker_(nullptr, this->args_);
+        result_ = Any(result, Any::by_reference_tag());
+        return result;
+    }
+    Any result_;
 };
 
 template <typename T>
