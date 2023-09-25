@@ -38,9 +38,29 @@ class SimpleAllocater {
     static void empty_dealloc(void* ptr) {}
 };
 
-// TODO: check any cast type at runtime
+struct AnyTypeChecker {
+    const std::type_info* type_info_{nullptr};
+    std::string msg_;
+
+    template <typename T>
+    AnyTypeChecker(T&& t) : type_info_(&typeid(T)) {}
+
+    AnyTypeChecker() = default;
+
+    template <typename T>
+    bool islegal() {
+        if (!type_info_) {
+            return false;
+        }
+        msg_ += std::string("cast ") + __support__demangle(type_info_->name()) +
+                " to " + __support__demangle(typeid(T).name());
+        return typeid(T) == *type_info_;
+    }
+    const std::string& msg() const { return msg_; }
+};
+
 template <typename AllocT = SimpleAllocater>
-class __Any {
+class __Any : public AnyTypeChecker {
    public:
     struct by_value_tag {};
     struct by_reference_tag {};
@@ -57,6 +77,8 @@ class __Any {
         if (this == &other) {
             return *this;
         }
+        static_cast<AnyTypeChecker&>(*this) =
+            static_cast<AnyTypeChecker&>(other);
         // buf_ = std::exchange(other.buf_, nullptr);
         buf_ = other.buf_;
         dealloctor_ = std::exchange(other.dealloctor_, &AllocT::empty_dealloc);
@@ -66,7 +88,8 @@ class __Any {
 
     template <typename T>
     __Any(T&& t, by_value_tag = {})
-        : dealloctor_(
+        : AnyTypeChecker(std::forward<T>(t)),
+          dealloctor_(
               &__Any::destruct<typename std::remove_reference<T>::type>) {
         using ValueT = typename std::remove_reference<T>::type;
         buf_ = AllocT::alloc(sizeof(T));
@@ -76,19 +99,21 @@ class __Any {
     }
 
     template <typename T>
-    __Any(T&& t, by_reference_tag) {
+    __Any(T&& t, by_reference_tag) : AnyTypeChecker(std::forward<T>(t)) {
         buf_ = &t;
         castImpl_ = reinterpret_cast<void*>(
             &__Any<AllocT>::as_br<std::remove_reference_t<T>>);
     }
 
-    __Any(void* obj, by_reference_tag) {
+    template <typename T>
+    __Any(T* obj, by_reference_tag) : AnyTypeChecker(*obj) {
         buf_ = obj;
         castImpl_ = reinterpret_cast<void*>(&__Any<AllocT>::as_opaque);
     }
 
     template <typename T>
-    __Any(T&& t, size_t size, by_deepcopy_tag) : dealloctor_(&AllocT::dealloc) {
+    __Any(T&& t, size_t size, by_deepcopy_tag)
+        : AnyTypeChecker(std::forward<T>(t)), dealloctor_(&AllocT::dealloc) {
         buf_ = AllocT::alloc(size);
         auto buf = reinterpret_cast<char*>(buf_);
         memcpy(buf, std::forward<T>(t), size);
@@ -100,6 +125,7 @@ class __Any {
 
     template <typename T>
     T& as() {
+        assert(this->islegal<T>());
         return reinterpret_cast<T& (*)(__Any*)>(castImpl_)(this);
     }
 

@@ -417,7 +417,7 @@ TEST(SupportTest, functor_view) {
 TEST(SupportTest, functor_viewo) {
     using Type = std::vector<int>;
     Type vec_int = {0, 1, 2, 3};
-    Any any(reinterpret_cast<void*>(&vec_int), Any::by_reference_tag());
+    Any any(&vec_int, Any::by_reference_tag());
     Type& vec = any.as<Type>();
     LOG(WARN) << vec;
 }
