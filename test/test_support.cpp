@@ -206,7 +206,8 @@ TEST(SupportTest, functor_member_func_direct_capture) {
     functor.capture(1, vec_int);
 
     OpFunctor functor_s(scalar_add<>);
-    functor_s.captureVector(0, functor.getResult<VecInt>(), 2);
+    functor_s.capture(0, functor.getResult<VecInt>(), &VecInt::operator[],
+                      size_t(2));
     functor_s.capture(1, 2);
 
     functor();
@@ -346,8 +347,10 @@ TEST(SupportTest, opfunctor_accessor_vector) {
     OpFunctor params(&getVectorResult);
     OpFunctor addFunc(&add);
 
-    addFunc.capture(0, params.getResult<std::vector<Tensor>>(), 1);
-    addFunc.capture(1, params.getResult<std::vector<Tensor>>(), 2);
+    addFunc.capture(0, params.getResult<std::vector<Tensor>>(),
+                    &std::vector<Tensor>::operator[], size_t(1));
+    addFunc.capture(1, params.getResult<std::vector<Tensor>>(),
+                    &std::vector<Tensor>::operator[], size_t(2));
 
     params(size_t{4});
     addFunc();
@@ -386,12 +389,15 @@ TEST(SupportTest, opfunctor_accessor_tuple) {
         rhs_tensor.element_begin<float>()[j] = 6 + j + 1;
     }
 
-    tensor_addFunc.capture<0>(0,
-                              params.getResult<std::tuple<Tensor, size_t>>());
+    Tensor& (*get0)(std::tuple<Tensor, size_t>&) = &std::get<0, Tensor, size_t>;
+    size_t& (*get1)(std::tuple<Tensor, size_t>&) = &std::get<1, Tensor, size_t>;
+
+    tensor_addFunc.capture(0, params.getResult<std::tuple<Tensor, size_t>>(),
+                           get0);
     tensor_addFunc.capture(1, rhs_tensor);
 
-    scalar_addFunc.capture<1>(0,
-                              params.getResult<std::tuple<Tensor, size_t>>());
+    scalar_addFunc.capture(0, params.getResult<std::tuple<Tensor, size_t>>(),
+                           get1);
     scalar_addFunc.capture(1, size_t(1));
 
     params();
@@ -407,11 +413,27 @@ TEST(SupportTest, opfunctor_accessor_tuple) {
 }
 
 TEST(SupportTest, functor_view) {
+    size_t index0 = 1;
     using Type = std::vector<int>;
     Type vec_int = {0, 1, 2, 3};
-    ViewFunctor<int> view(&Type::operator[]);
-    view(vec_int, size_t(1)) += 1;
+    ViewFunctor view0(&Type::operator[]);
+    view0(vec_int, index0);
+    view0.getResult<int>() += 1;
     LOG(WARN) << vec_int;
+    EXPECT_EQ(vec_int[index0], 2);
+
+    size_t index1 = 2;
+    ViewFunctor view1(&Type::operator[], vec_int, index1);
+    view1();
+    view1.getResult<int>() += 1;
+    EXPECT_EQ(vec_int[index1], 3);
+
+    size_t index2 = 3;
+    Any any(vec_int, Any::by_reference_tag());
+    ViewFunctor view2(&Type::operator[], std::move(any), index2);
+    view2();
+    view2.getResult<int>() += 1;
+    EXPECT_EQ(vec_int[index2], 4);
 }
 
 TEST(SupportTest, functor_viewo) {
