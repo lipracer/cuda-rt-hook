@@ -1,6 +1,7 @@
 #pragma once
 #include <stdlib.h>
 
+#include <cassert>
 #include <type_traits>
 #include <utility>
 
@@ -38,26 +39,37 @@ class SimpleAllocater {
     static void empty_dealloc(void* ptr) {}
 };
 
+// some project forbidden rtti
+// #define SUPPORT_CHECK_TYPE
+#ifdef SUPPORT_CHECK_TYPE
 struct AnyTypeChecker {
     const std::type_info* type_info_{nullptr};
     std::string msg_;
-
     template <typename T>
     AnyTypeChecker(T&& t) : type_info_(&typeid(T)) {}
-
     AnyTypeChecker() = default;
-
+    std::string name() const { return __support__demangle(type_info_->name()); }
     template <typename T>
-    bool islegal() {
-        if (!type_info_) {
-            return false;
-        }
+    void check_islegal() {
+        if (!type_info_) assert(false && "empty type info!");
         msg_ += std::string("cast ") + __support__demangle(type_info_->name()) +
                 " to " + __support__demangle(typeid(T).name());
-        return typeid(T) == *type_info_;
+        assert(typeid(T) == *type_info_ && "type mismatch!");
     }
     const std::string& msg() const { return msg_; }
 };
+#else
+struct AnyTypeChecker {
+    std::string msg_;
+    template <typename T>
+    AnyTypeChecker(T&& t) {}
+    AnyTypeChecker() = default;
+    std::string name() const { return {}; }
+    template <typename T>
+    void check_islegal() {}
+    std::string msg() const { return {}; }
+};
+#endif
 
 template <typename AllocT = SimpleAllocater>
 class __Any : public AnyTypeChecker {
@@ -100,6 +112,8 @@ class __Any : public AnyTypeChecker {
 
     template <typename T>
     __Any(T&& t, by_reference_tag) : AnyTypeChecker(std::forward<T>(t)) {
+        static_assert(!std::is_rvalue_reference<T>::value,
+                      "can not ref a right value!");
         buf_ = &t;
         castImpl_ = reinterpret_cast<void*>(
             &__Any<AllocT>::as_br<std::remove_reference_t<T>>);
@@ -125,7 +139,7 @@ class __Any : public AnyTypeChecker {
 
     template <typename T>
     T& as() {
-        assert(this->islegal<T>());
+        this->check_islegal<T>();
         return reinterpret_cast<T& (*)(__Any*)>(castImpl_)(this);
     }
 
@@ -250,6 +264,41 @@ struct Invoker<R (ClsT::*)(Args...), R> {
     }
 };
 
+// write the output to last argument
+template <typename ClsT, typename R, typename... Args>
+struct Invoker<R (ClsT::*)(Args...), void> {
+    using MemPtr = R (ClsT::*)(Args...);
+
+    template <size_t... idx>
+    static void __InvokeImplement(Any* args, std::index_sequence<idx...> = {}) {
+        MemPtr& m_ptr = args[0].as<MemPtr>();
+        ClsT& self = args[1].as<ClsT&>();
+        R& result = (self.*m_ptr)(args[idx + 2].template as<Args>()...);
+        args[2 + sizeof...(Args)] = Any(result, Any::by_reference_tag());
+    }
+
+    static void InvokeImplement(void*, Any* args) {
+        __InvokeImplement(args, std::make_index_sequence<sizeof...(Args)>());
+    }
+};
+
+// write the output to last argument
+template <typename R, typename... Args>
+struct Invoker<R(Args...), void> {
+    template <size_t... idx>
+    static void __InvokeImplement(void* ptr, Any* args,
+                                  std::index_sequence<idx...> = {}) {
+        auto func_ptr = reinterpret_cast<R (*)(Args...)>(ptr);
+        R& result = func_ptr(args[idx].template as<Args>()...);
+        args[sizeof...(Args)] = Any(result, Any::by_reference_tag());
+    }
+
+    static void InvokeImplement(void* ptr, Any* args) {
+        __InvokeImplement(ptr, args,
+                          std::make_index_sequence<sizeof...(Args)>());
+    }
+};
+
 template <typename R>
 class FunctorBase {
    public:
@@ -257,7 +306,7 @@ class FunctorBase {
     InvokePtrT invoker_{nullptr};
     void* funcPtr_{nullptr};
     Any* args_{nullptr};
-    size_t bindSize_{0};
+    size_t currentArgIndex_{0};
 
     FunctorBase() = default;
     FunctorBase(InvokePtrT i, void* f, Any* a)
@@ -271,11 +320,12 @@ class FunctorBase {
         std::swap(this->funcPtr_, other.funcPtr_);
         std::swap(this->invoker_, other.invoker_);
         this->args_ = std::exchange(other.args_, nullptr);
-        bindSize_ = other.bindSize_;
+        currentArgIndex_ = other.currentArgIndex_;
         return *this;
     }
 
-    void increaseBindSize() { ++bindSize_; }
+    void increaseBindSize() { ++currentArgIndex_; }
+    size_t argSize() const { return currentArgIndex_ + 1; };
 
     // TODO support
     FunctorBase(const FunctorBase& other) = delete;
@@ -292,7 +342,8 @@ class SpecialFunctorBase : public FunctorBase<R> {
     template <typename... Args, size_t... idx>
     void captureExternArgs(std::index_sequence<idx...>, Args&&... args) {
         (void)std::initializer_list<int>{
-            (this->args_[this->bindSize_ + idx] = std::forward<Args>(args),
+            (this->args_[this->currentArgIndex_ + idx] =
+                 std::forward<Args>(args),
              0)...};
     }
 
@@ -314,7 +365,8 @@ class SpecialFunctorBase<void> : public FunctorBase<void> {
     template <typename... Args, size_t... idx>
     void captureExternArgs(std::index_sequence<idx...>, Args&&... args) {
         (void)std::initializer_list<int>{
-            (this->args_[this->bindSize_ + idx] = std::forward<Args>(args),
+            (this->args_[this->currentArgIndex_ + idx] =
+                 std::forward<Args>(args),
              0)...};
     }
 
@@ -403,7 +455,15 @@ class Functor : public SpecialFunctorBase<U> {
     template <typename... Args>
     void captureVariadic(Args&&... args) {
         (void)std::initializer_list<int>{
-            (capture(this->bindSize_, std::forward<Args>(args)), 0)...};
+            (capture(this->currentArgIndex_, std::forward<Args>(args)), 0)...};
+    }
+
+    template <typename... Args>
+    void captureVariadicByReference(Args&&... args) {
+        (void)std::initializer_list<int>{
+            (captureByReference(this->currentArgIndex_,
+                                std::forward<Args>(args)),
+             0)...};
     }
 
    protected:
@@ -420,34 +480,96 @@ class Functor : public SpecialFunctorBase<U> {
     void (*args_destructor_)(Any* any){nullptr};
 };
 
-template <typename T>
-class ViewFunctor : Functor<T&> {
+class ViewFunctor : public Functor<void> {
    public:
-    using Functor<T&>::Functor;
-    using Base = Functor<T&>;
+    using Functor<void>::Functor;
+    using Base = Functor<void>;
+    static constexpr size_t extraArgumentSize = 3;
     // using Base::args_destructor;
     template <typename ClsT, typename R, typename... Args>
-    ViewFunctor(R (ClsT::*ptr)(Args...)) : Base() {
-        this->args_ = reinterpret_cast<Any*>(
-            SimpleAllocater::alloc(sizeof(Any) * (2 + sizeof...(Args))));
-        for (size_t i = 0; i < sizeof...(Args) + 2; ++i) {
+    ViewFunctor(R (ClsT::*ptr)(Args...))
+        : Base(), resultIndex_(sizeof...(Args) + extraArgumentSize - 1) {
+        // 1. member function point
+        // 2. obj pointer
+        // 3. output reference
+        this->args_ = reinterpret_cast<Any*>(SimpleAllocater::alloc(
+            sizeof(Any) * (extraArgumentSize + sizeof...(Args))));
+        for (size_t i = 0; i < sizeof...(Args) + extraArgumentSize; ++i) {
             (void)new (reinterpret_cast<void*>(this->args_ + i)) Any();
         }
         this->capture(0, ptr);
-        this->invoker_ = &Invoker<R (ClsT::*)(Args...), R>::InvokeImplement;
+        this->invoker_ = &Invoker<R (ClsT::*)(Args...), void>::InvokeImplement;
         this->args_destructor_ =
-            &Base::template args_destructor<sizeof...(Args) + 2>;
+            &Base::template args_destructor<sizeof...(Args) +
+                                            extraArgumentSize>;
+    }
+
+    template <typename ClsT, typename R, typename... Args>
+    ViewFunctor(R (ClsT::*ptr)(Args...), ClsT& obj, Args... args)
+        : ViewFunctor(ptr) {
+        this->captureByReference(1, obj);
+        this->captureVariadic(args...);
+    }
+
+    template <typename ClsT, typename R, typename... Args>
+    ViewFunctor(R (ClsT::*ptr)(Args...), Any&& obj, Args... args)
+        : ViewFunctor(ptr) {
+        this->args_[1] = std::move(obj);
+        this->increaseBindSize();
+        this->captureVariadic(args...);
+    }
+
+    template <typename R, typename... Args, typename... RArgs>
+    ViewFunctor(R (*ptr)(Args...), RArgs&&... args) : Base(ptr) {
+        // relalloc append output argument
+        this->args_ = reinterpret_cast<Any*>(
+            SimpleAllocater::alloc(sizeof(Any) * (sizeof...(Args) + 1)));
+        for (size_t i = 0; i < sizeof...(Args) + 1; ++i) {
+            (void)new (args_ + i) Any();
+        }
+        captureVariadicByReference(std::forward<RArgs>(args)...);
+        resultIndex_ = sizeof...(Args);
+    }
+
+    ViewFunctor(ViewFunctor&& other) : Base(std::move(other)) {
+        resultIndex_ = other.resultIndex_;
+        captureIndex_ = other.captureIndex_;
+    }
+
+    ViewFunctor& operator=(ViewFunctor&& other) {
+        static_cast<Base&>(*this) = std::move(other);
+        resultIndex_ = other.resultIndex_;
+        captureIndex_ = other.captureIndex_;
+        return *this;
     }
 
     template <typename ClsT, typename... Args>
-    T& operator()(ClsT& obj, Args&&... args) {
+    void operator()(ClsT& obj, Args&&... args) {
         this->captureByReference(1, obj);
         this->captureVariadic(std::forward<Args>(args)...);
-        auto& result = this->invoker_(nullptr, this->args_);
-        result_ = Any(result, Any::by_reference_tag());
-        return result;
+        assert(this->argSize() == resultIndex_ + 1 && "error argument size!");
+        this->invoker_(nullptr, this->args_);
     }
-    Any result_;
+
+    void operator()() {
+        assert(this->argSize() == resultIndex_ + 1 && "error argument size!");
+        this->invoker_(this->funcPtr_, this->args_);
+    }
+
+    template <typename T>
+    T& getResult() {
+        assert(resultIndex_ && "index of result can't zero!");
+        return this->args_[resultIndex_].as<T>();
+    }
+
+    void setCaptureIndex(int64_t n) { captureIndex_ = n; }
+
+    void moveTo(Any* any) {
+        assert(captureIndex_ >= 0 && "argument must >= 0!");
+        any[captureIndex_] = std::move(this->args_[resultIndex_]);
+    }
+    size_t resultIndex_{0};
+    int64_t captureIndex_{-1};
 };
 
 template <typename T>
@@ -455,71 +577,86 @@ auto __internal_operator_square_brackets(T& t, size_t index) {
     return t[index];
 }
 
-template <typename T>
-void __internal_operator_move_func(T& t, T&& other) {
-    t = std::move(other);
-}
-
 class OpFunctor;
 
-template <typename VectorT>
-class LazyViewVector {
+template <typename T>
+class PlaceHolder : public std::reference_wrapper<T> {
    public:
-    LazyViewVector(OpFunctor* productor, size_t index)
-        : productor(productor), index(index) {}
+    using std::reference_wrapper<T>::reference_wrapper;
 
-    static void LazyViewVectorImpl(size_t argIndex, Any* productor,
-                                   OpFunctor* consumer, size_t index);
-
-    auto get(OpFunctor* consumer, size_t argIndex) {
-        Functor<void> impl(LazyViewVectorImpl);
-        impl.captureVariadic(argIndex, productor, consumer, index);
-        return std::move(impl);
-    }
-
-   private:
-    OpFunctor* productor;
-    size_t index;
+    auto operator[](size_t index);
 };
 
-template <typename TupleT, size_t index>
-class LazyViewTuple {
+template <>
+class PlaceHolder<Any> : public std::reference_wrapper<Any> {
    public:
-    LazyViewTuple(OpFunctor* productor) : productor(productor) {}
-
-    static void LazyViewTupleImpl(size_t argIndex, Any* productor,
-                                  OpFunctor* consumer);
-
-    auto get(OpFunctor* consumer, size_t argIndex) {
-        Functor<void> impl(LazyViewTupleImpl);
-        impl.captureVariadic(argIndex, productor, consumer);
-        return std::move(impl);
-    }
-
-   private:
-    OpFunctor* productor;
+    using std::reference_wrapper<Any>::reference_wrapper;
 };
 
 class OpFunctor : public Functor<Any> {
    public:
     using Functor<Any>::capture;
 
-    template <typename T>
-    class PlaceHolder : public std::reference_wrapper<T> {
-       public:
-        using std::reference_wrapper<T>::reference_wrapper;
-
-        auto operator[](size_t index) {
-            OpFunctor accessor(__internal_operator_square_brackets<T>);
-            accessor.captureByReference(0, this->get());
-            accessor.capture(1, index);
-            return accessor;
-        }
-    };
-
     struct LazyFeedFuncs {
-        Functor<void> func;
-        LazyFeedFuncs* next{nullptr};
+        struct Node {
+            ViewFunctor func;
+            Node* next{nullptr};
+        };
+
+        using Iterator = Node*;
+        using Reference = Node&;
+
+        Iterator begin() { return head; }
+        Iterator end() { return last ? last->next : nullptr; }
+
+        Node* head{nullptr};
+        Node* last{nullptr};
+
+        LazyFeedFuncs() = default;
+        ~LazyFeedFuncs() { postorder_release(); }
+
+        void push_back(ViewFunctor&& view) {
+            auto func = new (SimpleAllocater::alloc(sizeof(Node))) Node();
+            func->func = std::move(view);
+            func->next = nullptr;
+            if (!last) {
+                last = head = func;
+            } else {
+                last->next = func;
+                last = func;
+            }
+        }
+
+        template <typename... Args>
+        void emplace_back(Args&&... args) {
+            auto func = new (SimpleAllocater::alloc(sizeof(Node))) Node();
+            func->func = ViewFunctor(std::forward<Args>(args)...);
+            func->next = nullptr;
+            if (!last) {
+                last = head = func;
+            } else {
+                last->next = func;
+                last = func;
+            }
+        }
+
+        Node& back() { return *last; }
+
+        void postorder_release() {
+            auto cur = head;
+            postorder_release_impl(cur);
+        }
+
+        void postorder_release_impl(Node* node) {
+            if (!node) {
+                return;
+            }
+            if (node->next) {
+                postorder_release_impl(node->next);
+            }
+            node->func.~ViewFunctor();
+            SimpleAllocater::dealloc(&node->func);
+        }
     };
 
     template <typename R>
@@ -535,10 +672,10 @@ class OpFunctor : public Functor<Any> {
 
     template <typename... Args>
     void operator()(Args&&... args) {
-        auto curFunc = lazyFeedFuncs_;
-        while (curFunc) {
-            curFunc->func();
-            curFunc = curFunc->next;
+        for (auto iter = lazyFeedFuncs_.begin(); iter != lazyFeedFuncs_.end();
+             iter = iter->next) {
+            iter->func();
+            iter->func.moveTo(this->args_);
         }
         Any result = Functor<Any>::operator()(std::forward<Args>(args)...);
         feed_placeholder_(&result_, &result);
@@ -549,49 +686,31 @@ class OpFunctor : public Functor<Any> {
         Functor<Any>::captureByReference(index, ph.get());
     }
 
-    template <typename T>
-    void capture(size_t index, PlaceHolder<std::vector<T>> ph,
-                 size_t containerIndex) {
-        captureVector(index, ph, containerIndex);
+    template <typename ClsT, typename R, typename... Args>
+    void capture(size_t index, PlaceHolder<Any> placeHolder,
+                 R (ClsT::*ptr)(Args...), Args... args) {
+        lazyFeedFuncs_.emplace_back(ptr, placeHolder.get(), args...);
+        lazyFeedFuncs_.back().func.setCaptureIndex(int64_t(index));
     }
 
-    template <size_t Index, typename... Args>
-    void capture(size_t index, PlaceHolder<std::tuple<Args...>> ph) {
-        captureTuple<Index>(index, ph);
+    template <typename T, typename ClsT, typename R, typename... Args>
+    void capture(size_t index, PlaceHolder<T> placeHolder,
+                 R (ClsT::*ptr)(Args...), Args... args) {
+        lazyFeedFuncs_.emplace_back(ptr, placeHolder.get(), args...);
+        lazyFeedFuncs_.back().func.setCaptureIndex(int64_t(index));
     }
 
-    template <typename ObjT>
-    void captureVector(size_t index, PlaceHolder<ObjT> ph, size_t vecIndex) {
-        auto func =
-            new (SimpleAllocater::alloc(sizeof(LazyFeedFuncs))) LazyFeedFuncs();
-        func->func = Functor<void>(&__lazy_capture_element_of_vector<ObjT>);
-        func->func.captureVariadic(this, index, ph, vecIndex);
-        func->next = lazyFeedFuncs_;
-        lazyFeedFuncs_ = func;
+    template <typename R, typename... Args>
+    void capture(size_t index, PlaceHolder<Any> placeHolder,
+                 R (*ptr)(Args...)) {
+        lazyFeedFuncs_.emplace_back(ptr, placeHolder.get());
+        lazyFeedFuncs_.back().func.setCaptureIndex(int64_t(index));
     }
 
-    template <size_t Index, typename ObjT>
-    void captureTuple(size_t index, PlaceHolder<ObjT> ph) {
-        auto func =
-            new (SimpleAllocater::alloc(sizeof(LazyFeedFuncs))) LazyFeedFuncs();
-        func->func =
-            Functor<void>(&__lazy_capture_element_of_tuple<Index, ObjT>);
-        func->func.captureVariadic(this, index, ph);
-        func->next = lazyFeedFuncs_;
-        lazyFeedFuncs_ = func;
-    }
-
-    template <typename ObjT>
-    static void __lazy_capture_element_of_vector(OpFunctor* self, size_t index,
-                                                 PlaceHolder<ObjT> ph,
-                                                 size_t vecIndex) {
-        self->captureByReference(index, ph.get()[vecIndex]);
-    }
-
-    template <size_t Index, typename ObjT>
-    static void __lazy_capture_element_of_tuple(OpFunctor* self, size_t index,
-                                                PlaceHolder<ObjT> ph) {
-        self->captureByReference(index, std::get<Index>(ph.get()));
+    template <typename T, typename R, typename... Args>
+    void capture(size_t index, PlaceHolder<T> placeHolder, R (*ptr)(Args...)) {
+        lazyFeedFuncs_.emplace_back(ptr, placeHolder.get());
+        lazyFeedFuncs_.back().func.setCaptureIndex(int64_t(index));
     }
 
     template <typename T>
@@ -606,24 +725,15 @@ class OpFunctor : public Functor<Any> {
    private:
     Any result_;
     Functor<void> feed_placeholder_;
-    LazyFeedFuncs* lazyFeedFuncs_{nullptr};
+    LazyFeedFuncs lazyFeedFuncs_;
 };
 
-template <typename VectorT>
-void LazyViewVector<VectorT>::LazyViewVectorImpl(size_t argIndex,
-                                                 Any* productor,
-                                                 OpFunctor* consumer,
-                                                 size_t index) {
-    consumer->captureByReference(argIndex,
-                                 productor->template as<VectorT>()[index]);
-}
-
-template <typename TupleT, size_t index>
-void LazyViewTuple<TupleT, index>::LazyViewTupleImpl(size_t argIndex,
-                                                     Any* productor,
-                                                     OpFunctor* consumer) {
-    consumer->captureByReference(
-        argIndex, std::get<index>(productor->template as<TupleT>()));
+template <typename T>
+auto PlaceHolder<T>::operator[](size_t index) {
+    OpFunctor accessor(__internal_operator_square_brackets<T>);
+    accessor.captureByReference(0, this->get());
+    accessor.capture(1, index);
+    return accessor;
 }
 
 }  // namespace support
