@@ -140,6 +140,7 @@ class __Any : public AnyTypeChecker {
     template <typename T>
     T& as() {
         this->check_islegal<T>();
+        assert(buf_ && "unexpect cast empty buffer to object!");
         return reinterpret_cast<T& (*)(__Any*)>(castImpl_)(this);
     }
 
@@ -152,6 +153,10 @@ class __Any : public AnyTypeChecker {
     operator T() {
         this->as<T>();
     }
+
+    operator bool() { return buf_; }
+
+    bool operator!() { return !static_cast<bool>(*this); }
 
     template <typename T>
     T release() {
@@ -353,6 +358,8 @@ class SpecialFunctorBase : public FunctorBase<R> {
                           std::forward<Args>(args)...);
         return this->invoker_(this->funcPtr_, this->args_);
     }
+
+    R operator()() { return this->invoker_(this->funcPtr_, this->args_); }
 };
 
 template <>
@@ -376,6 +383,8 @@ class SpecialFunctorBase<void> : public FunctorBase<void> {
                           std::forward<Args>(args)...);
         this->invoker_(this->funcPtr_, this->args_);
     }
+
+    void operator()() { this->invoker_(this->funcPtr_, this->args_); }
 };
 
 template <typename U, typename AllocT = SimpleAllocater>
@@ -667,6 +676,9 @@ class OpFunctor : public Functor<Any> {
     template <typename R, typename... Args>
     OpFunctor(R (*ptr)(Args...))
         : Functor<Any>::Functor(ptr), feed_placeholder_(__feed_placeholder<R>) {
+        // TODO: maybe some type has not default ctor,
+        // we need use view of any type refer the result, and modify function
+        // __feed_placeholder
         result_ = R{};
     }
 

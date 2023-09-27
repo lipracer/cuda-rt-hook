@@ -145,6 +145,17 @@ TEST(SupportTest, any_improve) {
     EXPECT_EQ(sp.use_count(), 2);
     auto sp0 = any.release<std::shared_ptr<int>>();
     EXPECT_EQ(sp.use_count(), 2);
+    Any empty_any;
+    EXPECT_FALSE(empty_any);
+    EXPECT_TRUE(!empty_any);
+}
+
+TEST(SupportTest, any_ref_log) {
+    using Type = std::vector<int>;
+    Type vec_int = {0, 1, 2, 3};
+    Any any(&vec_int, Any::by_reference_tag());
+    Type& vec = any.as<Type>();
+    LOG(WARN) << vec;
 }
 
 TEST(SupportTest, functor_ctor) {
@@ -242,9 +253,19 @@ TEST(SupportTest, opfunctor_scalar) {
 using Dim = int64_t;
 
 struct Tensor {
-    std::shared_ptr<void> storage;
     std::vector<Dim> shape;
     Dim totalSize;
+    size_t ByteSize;
+    std::shared_ptr<void> storage;
+
+    Tensor() = default;
+
+    Tensor(const std::vector<Dim>& shape, size_t elementSize)
+        : shape(shape),
+          totalSize(std::accumulate(shape.begin(), shape.end(), 1,
+                                    std::multiplies<Dim>())),
+          ByteSize(totalSize * elementSize),
+          storage(new char[ByteSize]) {}
 
     template <typename T>
     T& getElement(Dim index) const {
@@ -263,6 +284,12 @@ struct Tensor {
     iterator<T> element_end() const {
         return &getElement<T>(totalSize);
     }
+
+    Tensor clone() {
+        Tensor result(shape, ByteSize / totalSize);
+        memcpy(result.storage.get(), storage.get(), ByteSize);
+        return result;
+    }
 };
 
 std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
@@ -276,11 +303,7 @@ std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
 
 template <typename T>
 Tensor apply_empty(const std::vector<Dim>& shape) {
-    Dim n =
-        std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<Dim>());
-    return Tensor{.storage = std::shared_ptr<void>(new T[n]),
-                  .shape = shape,
-                  .totalSize = n};
+    return Tensor(shape, sizeof(T));
 }
 
 template <typename T, template <typename> class OpT>
@@ -368,9 +391,7 @@ TEST(SupportTest, opfunctor_accessor_vector) {
 }
 
 std::tuple<Tensor, size_t> getTupleResult() {
-    std::tuple<Tensor, size_t> result;
     std::vector<Dim> shape{2, 3};
-
     auto tensor = apply_empty<float>(shape);
     for (Dim j = 0; j < tensor.totalSize; ++j) {
         tensor.element_begin<float>()[j] = j + 1;
@@ -412,7 +433,7 @@ TEST(SupportTest, opfunctor_accessor_tuple) {
     EXPECT_EQ(scalar_addFunc.getResult<size_t>(), 18);
 }
 
-TEST(SupportTest, functor_view) {
+TEST(SupportTest, functor_pure_view) {
     size_t index0 = 1;
     using Type = std::vector<int>;
     Type vec_int = {0, 1, 2, 3};
@@ -436,10 +457,117 @@ TEST(SupportTest, functor_view) {
     EXPECT_EQ(vec_int[index2], 4);
 }
 
-TEST(SupportTest, functor_viewo) {
-    using Type = std::vector<int>;
-    Type vec_int = {0, 1, 2, 3};
-    Any any(&vec_int, Any::by_reference_tag());
-    Type& vec = any.as<Type>();
-    LOG(WARN) << vec;
+#define PerfScope(body)                                                    \
+    [&]() -> auto {                                                        \
+        auto psp = std::chrono::steady_clock::now();                       \
+        body;                                                              \
+        auto pep = std::chrono::steady_clock::now();                       \
+        return std::chrono::duration_cast<std::chrono::milliseconds>(pep - \
+                                                                     psp)  \
+            .count();                                                      \
+    }();
+
+// the performence of our functor and lambda function is very closely
+// we have get the statistic of the performence so that reduce the loop count to
+// reduce test case cost
+constexpr size_t kLoopCount = 1000000;
+std::initializer_list<Dim> kPerfShape{64};
+
+TEST(SupportTest, lambda_tensor_perf) {
+    Tensor param0 = apply_empty<float>(kPerfShape);
+    Tensor param1 = apply_empty<float>(kPerfShape);
+    std::iota(param0.element_begin<float>(), param0.element_end<float>(), 0);
+    std::iota(param1.element_begin<float>(), param1.element_end<float>(), 0);
+
+    auto param0_clone_lambda = param0.clone();
+    auto param1_clone_lambda = param1.clone();
+
+    using FunctorType = std::function<void(void)>;
+
+    void* add_ptr = reinterpret_cast<void*>(&add);
+    void* sub_ptr = reinterpret_cast<void*>(&sub);
+
+    Tensor lambda_result;
+    FunctorType lambda_add = [&param0_clone_lambda, &param1_clone_lambda,
+                              &lambda_result, add_ptr]() {
+        auto result = (*reinterpret_cast<decltype(&add)>(add_ptr))(
+            param0_clone_lambda, param1_clone_lambda);
+        lambda_result = std::move(result);
+    };
+
+    Tensor lambda_tensor;
+    FunctorType lambda_sub = [&lambda_result, &param1_clone_lambda,
+                              &lambda_tensor, sub_ptr]() {
+        lambda_tensor = (*reinterpret_cast<decltype(&sub)>(sub_ptr))(
+            lambda_result, param1_clone_lambda);
+    };
+
+    Tensor plain_result;
+    // clang-format off
+    auto plain_dur = PerfScope(
+        for (size_t i = 0; i < kLoopCount; ++i) {
+            auto add_ret = add(param0, param1);
+            plain_result = sub(add_ret, param1);
+        }
+    );
+
+    auto lambda_dur = PerfScope(
+        for (size_t i = 0; i < kLoopCount; ++i) {
+            lambda_add();
+            lambda_sub();
+        }
+    );
+    // clang-format on
+
+    LOG(ERROR) << "lambda result:" << plain_dur << " vs " << lambda_dur
+               << " drop:"
+               << (lambda_dur - plain_dur) * double(1000) / plain_dur << "%%";
+
+    EXPECT_TRUE(std::equal(lambda_tensor.element_begin<float>(),
+                           lambda_tensor.element_end<float>(),
+                           plain_result.element_begin<float>(), float_eq));
+}
+
+TEST(SupportTest, opfunctor_tensor_perf) {
+    Tensor param0 = apply_empty<float>(kPerfShape);
+    Tensor param1 = apply_empty<float>(kPerfShape);
+    std::iota(param0.element_begin<float>(), param0.element_end<float>(), 0);
+    std::iota(param1.element_begin<float>(), param1.element_end<float>(), 0);
+
+    auto param0_clone = param0.clone();
+    auto param1_clone = param1.clone();
+
+    OpFunctor functor0(&add);
+    functor0.capture(0, param0_clone);
+    functor0.capture(1, param1_clone);
+
+    OpFunctor functor1(&sub);
+    functor1.capture(0, functor0.getResult<Tensor>());
+    functor1.capture(1, param1_clone);
+
+    Tensor plain_result;
+    // clang-format off
+    auto plain_dur = PerfScope(
+        for (size_t i = 0; i < kLoopCount; ++i) {
+            auto add_ret = add(param0, param1);
+            plain_result = sub(add_ret, param1);
+        }
+    );
+
+    auto functor_dur = PerfScope(
+        for (size_t i = 0; i < kLoopCount; ++i) {
+            functor0();
+            functor1();
+        }
+    );
+    // clang-format on
+    LOG(ERROR) << "functor result:" << plain_dur << " vs " << functor_dur
+               << " drop:"
+               << (functor_dur - plain_dur) * double(1000) / plain_dur << "%%";
+
+    Tensor& tensor = functor1.getResult<Tensor>();
+
+    EXPECT_TRUE(std::equal(tensor.element_begin<float>(),
+                           tensor.element_end<float>(),
+                           plain_result.element_begin<float>(), float_eq));
 }
