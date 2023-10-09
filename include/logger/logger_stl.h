@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vector>
-
+#include <ostream>
 #include "logger.h"
 
 namespace logger {
@@ -27,7 +27,3 @@ inline LogStream& WriteToLoggerStream(LogStream& os,
 }
 
 }  // namespace logger
-
-namespace stl {
-using ::operator<<;
-}

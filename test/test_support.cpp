@@ -145,6 +145,17 @@ TEST(SupportTest, any_improve) {
     EXPECT_EQ(sp.use_count(), 2);
     auto sp0 = any.release<std::shared_ptr<int>>();
     EXPECT_EQ(sp.use_count(), 2);
+    Any empty_any;
+    EXPECT_FALSE(empty_any);
+    EXPECT_TRUE(!empty_any);
+}
+
+TEST(SupportTest, any_ref_log) {
+    using Type = std::vector<int>;
+    Type vec_int = {0, 1, 2, 3};
+    Any any(vec_int, Any::by_reference_tag());
+    Type& vec = any.as<Type>();
+    LOG(WARN) << vec;
 }
 
 TEST(SupportTest, functor_ctor) {
@@ -186,16 +197,16 @@ TEST(SupportTest, functor_member_func) {
     OpFunctor functor(vector_add);
     functor.capture(0, vec_int);
     functor.capture(1, vec_int);
-    auto accessor = functor.getResult<VecInt>()[2];
 
     OpFunctor functor_s(scalar_add<>);
-    functor_s.capture(0, accessor.getResult<int>());
+    functor_s.capture(0, functor.getResult<VecInt>(), &VecInt::operator[],
+                      size_t(2));
     functor_s.capture(1, 2);
 
     functor();
-    accessor();
+    LOG(INFO) << functor.getResult<VecInt>().get();
     functor_s();
-    EXPECT_EQ(functor_s.getResult<int>(), 8);
+    EXPECT_EQ(functor_s.getResult<int>().get(), 8);
 }
 
 TEST(SupportTest, functor_member_func_direct_capture) {
@@ -212,14 +223,14 @@ TEST(SupportTest, functor_member_func_direct_capture) {
 
     functor();
     functor_s();
-    EXPECT_EQ(functor_s.getResult<int>(), 8);
+    EXPECT_EQ(functor_s.getResult<int>().get(), 8);
 }
 
 TEST(SupportTest, functor_member_func_partial_arg) {
     OpFunctor functor(scalar_add<>);
     functor.capture(0, 1);
     functor(2);
-    EXPECT_EQ(functor.getResult<int>(), 3);
+    EXPECT_EQ(functor.getResult<int>().get(), 3);
 }
 
 TEST(SupportTest, opfunctor_scalar) {
@@ -242,9 +253,38 @@ TEST(SupportTest, opfunctor_scalar) {
 using Dim = int64_t;
 
 struct Tensor {
-    std::shared_ptr<void> storage;
     std::vector<Dim> shape;
     Dim totalSize;
+    size_t ByteSize;
+    std::shared_ptr<void> storage;
+
+    Tensor() = default;
+
+    Tensor(const std::vector<Dim>& shape, size_t elementSize)
+        : shape(shape),
+          totalSize(std::accumulate(shape.begin(), shape.end(), 1,
+                                    std::multiplies<Dim>())),
+          ByteSize(totalSize * elementSize),
+          storage(new char[ByteSize]) {}
+
+    Tensor(const Tensor& other) { *this = other; }
+
+    Tensor(Tensor&& other) { *this = std::move(other); }
+
+    Tensor& operator=(const Tensor& other) {
+        shape = other.shape;
+        totalSize = other.totalSize;
+        ByteSize = other.ByteSize;
+        storage = other.storage;
+        return *this;
+    }
+    Tensor& operator=(Tensor&& other) {
+        shape = std::move(other.shape);
+        totalSize = other.totalSize;
+        ByteSize = other.ByteSize;
+        storage = std::move(other.storage);
+        return *this;
+    }
 
     template <typename T>
     T& getElement(Dim index) const {
@@ -263,6 +303,12 @@ struct Tensor {
     iterator<T> element_end() const {
         return &getElement<T>(totalSize);
     }
+
+    Tensor clone() {
+        Tensor result(shape, ByteSize / totalSize);
+        memcpy(result.storage.get(), storage.get(), ByteSize);
+        return result;
+    }
 };
 
 std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
@@ -276,11 +322,7 @@ std::ostream& operator<<(std::ostream& os, const Tensor& tensor) {
 
 template <typename T>
 Tensor apply_empty(const std::vector<Dim>& shape) {
-    Dim n =
-        std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<Dim>());
-    return Tensor{.storage = std::shared_ptr<void>(new T[n]),
-                  .shape = shape,
-                  .totalSize = n};
+    return Tensor(shape, sizeof(T));
 }
 
 template <typename T, template <typename> class OpT>
@@ -299,7 +341,7 @@ static Tensor add(const Tensor& lhs, const Tensor& rhs) {
     return arith_op<float, std::plus>(lhs, rhs);
 }
 
-static Tensor sub(Tensor lhs, Tensor rhs) {
+static Tensor sub(const Tensor& lhs, const Tensor& rhs) {
     return arith_op<float, std::minus>(lhs, rhs);
 }
 
@@ -324,7 +366,7 @@ TEST(SupportTest, opfunctor_tensor) {
     functor0();
     functor1();
 
-    Tensor& tensor = functor1.getResult<Tensor>();
+    Tensor& tensor = functor1.getResult<Tensor>().get();
 
     EXPECT_TRUE(std::equal(param0.element_begin<float>(),
                            param0.element_end<float>(),
@@ -358,7 +400,7 @@ TEST(SupportTest, opfunctor_accessor_vector) {
     for (auto& t : params.getResult<std::vector<Tensor>>().get()) {
         LOG(WARN) << t;
     }
-    LOG(WARN) << addFunc.getResult<Tensor>();
+    LOG(WARN) << addFunc.getResult<Tensor>().get();
 
     auto tensors = getVectorResult(size_t{4});
     auto direct_result = add(tensors[1], tensors[2]);
@@ -368,9 +410,7 @@ TEST(SupportTest, opfunctor_accessor_vector) {
 }
 
 std::tuple<Tensor, size_t> getTupleResult() {
-    std::tuple<Tensor, size_t> result;
     std::vector<Dim> shape{2, 3};
-
     auto tensor = apply_empty<float>(shape);
     for (Dim j = 0; j < tensor.totalSize; ++j) {
         tensor.element_begin<float>()[j] = j + 1;
@@ -406,13 +446,13 @@ TEST(SupportTest, opfunctor_accessor_tuple) {
     std::get<1>(tt) += 1;
     scalar_addFunc();
 
-    LOG(WARN) << tensor_addFunc.getResult<Tensor>();
-    LOG(WARN) << scalar_addFunc.getResult<size_t>();
+    LOG(WARN) << tensor_addFunc.getResult<Tensor>().get();
+    LOG(WARN) << scalar_addFunc.getResult<size_t>().get();
 
-    EXPECT_EQ(scalar_addFunc.getResult<size_t>(), 18);
+    EXPECT_EQ(scalar_addFunc.getResult<size_t>().get(), 18);
 }
 
-TEST(SupportTest, functor_view) {
+TEST(SupportTest, functor_pure_view) {
     size_t index0 = 1;
     using Type = std::vector<int>;
     Type vec_int = {0, 1, 2, 3};
@@ -422,24 +462,168 @@ TEST(SupportTest, functor_view) {
     LOG(WARN) << vec_int;
     EXPECT_EQ(vec_int[index0], 2);
 
+    Any any(vec_int, Any::by_reference_tag());
+    PlaceHolder<Type> ph(&any);
+
     size_t index1 = 2;
-    ViewFunctor view1(&Type::operator[], vec_int, index1);
+    ViewFunctor view1(&Type::operator[], ph, index1);
     view1();
     view1.getResult<int>() += 1;
     EXPECT_EQ(vec_int[index1], 3);
 
     size_t index2 = 3;
-    Any any(vec_int, Any::by_reference_tag());
-    ViewFunctor view2(&Type::operator[], std::move(any), index2);
+    ViewFunctor view2(&Type::operator[], ph, index2);
     view2();
     view2.getResult<int>() += 1;
     EXPECT_EQ(vec_int[index2], 4);
 }
 
-TEST(SupportTest, functor_viewo) {
-    using Type = std::vector<int>;
-    Type vec_int = {0, 1, 2, 3};
-    Any any(&vec_int, Any::by_reference_tag());
-    Type& vec = any.as<Type>();
-    LOG(WARN) << vec;
+struct DurationDuard {
+    DurationDuard() : st(std::chrono::steady_clock::now()) {}
+    ~DurationDuard() {
+        LOG(ERROR) << "cost:"
+                   << std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - st)
+                          .count()
+                   << "ms";
+    }
+    decltype(std::chrono::steady_clock::now()) st;
+};
+
+// the performence of our functor and lambda function is very closely
+// we have get the statistic of the performence so that reduce the loop count to
+// reduce test case cost
+constexpr size_t kLoopCount = 10000;
+std::initializer_list<Dim> kPerfShape{64};
+
+TEST(SupportTest, lambda_tensor_perf) {
+    Tensor param0 = apply_empty<float>(kPerfShape);
+    Tensor param1 = apply_empty<float>(kPerfShape);
+    std::iota(param0.element_begin<float>(), param0.element_end<float>(), 0);
+    std::iota(param1.element_begin<float>(), param1.element_end<float>(), 0);
+
+    auto param0_clone_lambda = param0.clone();
+    auto param1_clone_lambda = param1.clone();
+
+    using FunctorType = std::function<void(void)>;
+
+    void* add_ptr = reinterpret_cast<void*>(&add);
+    void* sub_ptr = reinterpret_cast<void*>(&sub);
+
+    Tensor lambda_result;
+    FunctorType lambda_add = [&param0_clone_lambda, &param1_clone_lambda,
+                              &lambda_result, add_ptr]() {
+        auto result = (*reinterpret_cast<decltype(&add)>(add_ptr))(
+            param0_clone_lambda, param1_clone_lambda);
+        lambda_result = std::move(result);
+    };
+
+    Tensor lambda_tensor;
+    FunctorType lambda_sub = [&lambda_result, &param1_clone_lambda,
+                              &lambda_tensor, sub_ptr]() {
+        lambda_tensor = (*reinterpret_cast<decltype(&sub)>(sub_ptr))(
+            lambda_result, param1_clone_lambda);
+    };
+
+    Tensor plain_result;
+    {
+        DurationDuard _;
+        for (size_t i = 0; i < kLoopCount; ++i) {
+            auto add_ret = add(param0, param1);
+            plain_result = sub(add_ret, param1);
+        }
+    }
+    {
+        DurationDuard _;
+        for (size_t i = 0; i < kLoopCount; ++i) {
+            lambda_add();
+            lambda_sub();
+        }
+    }
+
+    EXPECT_TRUE(std::equal(lambda_tensor.element_begin<float>(),
+                           lambda_tensor.element_end<float>(),
+                           plain_result.element_begin<float>(), float_eq));
+}
+
+TEST(SupportTest, opfunctor_tensor_perf) {
+    Tensor param0 = apply_empty<float>(kPerfShape);
+    Tensor param1 = apply_empty<float>(kPerfShape);
+    std::iota(param0.element_begin<float>(), param0.element_end<float>(), 0);
+    std::iota(param1.element_begin<float>(), param1.element_end<float>(), 0);
+
+    auto param0_clone = param0.clone();
+    auto param1_clone = param1.clone();
+
+    OpFunctor functor0(&add);
+    functor0.captureByReference(0, param0_clone);
+    functor0.captureByReference(1, param1_clone);
+
+    OpFunctor functor1(&sub);
+    functor1.capture(0, functor0.getResult<Tensor>());
+    functor1.captureByReference(1, param1_clone);
+
+    Tensor plain_result;
+    {
+        DurationDuard _;
+        for (size_t i = 0; i < kLoopCount; ++i) {
+            auto add_ret = add(param0, param1);
+            plain_result = sub(add_ret, param1);
+        }
+    }
+    LOG(INFO) << "start funcor perf";
+    {
+        DurationDuard _;
+        for (size_t i = 0; i < kLoopCount; ++i) {
+            functor0();
+            functor1();
+        }
+    }
+    Tensor& tensor = functor1.getResult<Tensor>().get();
+
+    EXPECT_TRUE(std::equal(tensor.element_begin<float>(),
+                           tensor.element_end<float>(),
+                           plain_result.element_begin<float>(), float_eq));
+}
+
+TEST(SupportTest, opfunctor_tensor_perf_single) {
+    Tensor param0 = apply_empty<float>({128});
+    Tensor param1 = apply_empty<float>({128});
+    std::iota(param0.element_begin<float>(), param0.element_end<float>(), 0);
+    std::iota(param1.element_begin<float>(), param1.element_end<float>(), 0);
+
+    Tensor lambda_result;
+    auto lambda_add = [&param0, &param1, &lambda_result]() {
+        auto result = add(param0, param1);
+        lambda_result = std::move(result);
+    };
+
+    auto param0_clone = param0.clone();
+    auto param1_clone = param1.clone();
+
+    OpFunctor functor0(&add);
+    functor0.captureByReference(0, param0_clone);
+    functor0.captureByReference(1, param1_clone);
+    constexpr size_t loop_count = 100000;
+    Tensor plain_result;
+
+    {
+        DurationDuard _;
+        for (size_t i = 0; i < loop_count; ++i) {
+            lambda_add();
+        }
+    }
+
+    {
+        DurationDuard _;
+        for (size_t i = 0; i < loop_count; ++i) {
+            functor0();
+        }
+    }
+
+    Tensor& tensor = functor0.getResult<Tensor>().get();
+
+    EXPECT_TRUE(std::equal(tensor.element_begin<float>(),
+                           tensor.element_end<float>(),
+                           lambda_result.element_begin<float>(), float_eq));
 }

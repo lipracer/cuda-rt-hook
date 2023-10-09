@@ -94,8 +94,8 @@ class LogStream {
 
     const char* getStrLevel(LogLevel level) {
         constexpr const char* str[] = {
-            "\033[0;32mINFO\033[0m", "\033[0;33mWARN\033[0m",
-            "\033[0;31mERROR\033[0m", "\033[0;31mFATAL\033[0m"};
+            "\033[0;32m[INFO]\033[0m", "\033[0;33m[WARN]\033[0m",
+            "\033[0;31m[ERROR]\033[0m", "\033[0;31m[FATAL]\033[0m"};
         return str[static_cast<int>(level)];
     }
 
@@ -114,12 +114,15 @@ class LogStream {
     (static_cast<int>((level)) >= \
      static_cast<int>(logger::LogStream::instance().getLevel()))
 
+template <typename T>
+using VoidType = void;
+
 template <typename T, typename ST = void>
 struct HasToStringFunc : public std::false_type {};
 
 template <typename T>
-struct HasToStringFunc<T, std::__void_t<decltype(std::declval<std::ostream>()
-                                                 << std::declval<T>())>>
+struct HasToStringFunc<
+    T, VoidType<decltype(std::stringstream() << std::declval<T>())>>
     : public std::true_type {};
 
 template <typename T>
@@ -138,9 +141,8 @@ LogStream& operator<<(LogStream& s, T&& t) {
 struct LogWrapper {
     explicit LogWrapper(LogLevel level) : level_(level) {
         st_ = std::chrono::high_resolution_clock::now();
-        LogStream::instance()
-            << "[" << LogStream::instance().getStrLevel(level) << "]"
-            << "[TID:" << LogStream::threadId() << "]";
+        LogStream::instance() << LogStream::instance().getStrLevel(level)
+                              << "[TID:" << LogStream::threadId() << "]";
     }
     explicit LogWrapper(int level) : LogWrapper(static_cast<LogLevel>(level)) {}
     ~LogWrapper() {
