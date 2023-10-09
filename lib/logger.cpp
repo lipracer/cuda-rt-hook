@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -147,7 +148,7 @@ inline void fwriteString(SimpleStringRef* str, std::FILE* fh) {
 class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
    public:
     LogConsumer(const std::shared_ptr<LogConfig>& cfg)
-        :
+        : std::enable_shared_from_this<LogConsumer>(),
 #ifndef USE_STL_QUEUE
           buf_(cfg->pageSize),
 #endif
@@ -169,7 +170,21 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
         ss.str("");
     }
 
+    void notify() {
+        {
+            std::lock_guard<std::mutex> gl(mtx_);
+            started_ = true;
+        }
+        cv_.notify_one();
+    }
+
     void print() {
+        // sometimes new threads start during the logconsumer build process,
+        // which can cause a crash
+        {
+            std::unique_lock<std::mutex> ul(mtx_);
+            cv_.wait(ul, [this]() { return this->started_; });
+        }
         // increase the ref count avoid other thread release self
         auto self = this->shared_from_this();
         while (!exit_ || buf_.size()) {
@@ -230,19 +245,21 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
     std::unique_ptr<std::thread> th_;
     std::vector<std::string> tmpBuffer_;
     std::shared_ptr<LogConfig> cfg_;
+    std::condition_variable cv_;
+    bool started_{false};
 };
 
 size_t StringLiteralBase::MN = 0;
 
 LogStream& LogStream::instance(const LogConfig& cfg) {
     auto sp_cfg = std::make_shared<LogConfig>(cfg);
-    static std::shared_ptr<LogConsumer> gLogConsumer =
-        std::make_shared<LogConsumer>(sp_cfg);
+    static std::shared_ptr<LogConsumer> gLogConsumer(new LogConsumer(sp_cfg));
     // static thread_local std::unique_ptr<LogStream> __instance =
     //     std::make_unique<LogStream>(gLogConsumer);
 
     static thread_local LogStream* __instance =
         new LogStream(gLogConsumer, sp_cfg);
+    gLogConsumer->notify();
     return *__instance;
 }
 
