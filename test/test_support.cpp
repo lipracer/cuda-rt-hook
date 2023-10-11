@@ -199,14 +199,13 @@ TEST(SupportTest, functor_member_func) {
     functor.capture(1, vec_int);
 
     OpFunctor functor_s(scalar_add<>);
-    functor_s.capture(0, functor.getResult<VecInt>(), &VecInt::operator[],
-                      size_t(2));
+    functor_s.capture(0, functor.getResult(), &VecInt::operator[], size_t(2));
     functor_s.capture(1, 2);
 
     functor();
-    LOG(INFO) << functor.getResult<VecInt>().get();
+    LOG(INFO) << functor.getResult().get<VecInt>();
     functor_s();
-    EXPECT_EQ(functor_s.getResult<int>().get(), 8);
+    EXPECT_EQ(functor_s.getResultValue<int>(), 8);
 }
 
 TEST(SupportTest, functor_member_func_direct_capture) {
@@ -217,20 +216,19 @@ TEST(SupportTest, functor_member_func_direct_capture) {
     functor.capture(1, vec_int);
 
     OpFunctor functor_s(scalar_add<>);
-    functor_s.capture(0, functor.getResult<VecInt>(), &VecInt::operator[],
-                      size_t(2));
+    functor_s.capture(0, functor.getResult(), &VecInt::operator[], size_t(2));
     functor_s.capture(1, 2);
 
     functor();
     functor_s();
-    EXPECT_EQ(functor_s.getResult<int>().get(), 8);
+    EXPECT_EQ(functor_s.getResultValue<int>(), 8);
 }
 
 TEST(SupportTest, functor_member_func_partial_arg) {
     OpFunctor functor(scalar_add<>);
     functor.capture(0, 1);
     functor(2);
-    EXPECT_EQ(functor.getResult<int>().get(), 3);
+    EXPECT_EQ(functor.getResultValue<int>(), 3);
 }
 
 TEST(SupportTest, opfunctor_scalar) {
@@ -241,13 +239,13 @@ TEST(SupportTest, opfunctor_scalar) {
     functor0.capture(1, b);
 
     OpFunctor functor1(&scalar_sub<>);
-    functor1.capture(0, functor0.getResult<int>());
+    functor1.capture(0, functor0.getResult());
     functor1.capture(1, a);
 
     functor0();
     functor1();
 
-    EXPECT_EQ(functor1.getResult<int>().get(), b);
+    EXPECT_EQ(functor1.getResultValue<int>(), b);
 }
 
 using Dim = int64_t;
@@ -360,13 +358,13 @@ TEST(SupportTest, opfunctor_tensor) {
     functor0.capture(1, param1);
 
     OpFunctor functor1(&sub);
-    functor1.capture(0, functor0.getResult<Tensor>());
+    functor1.capture(0, functor0.getResult());
     functor1.capture(1, param1);
 
     functor0();
     functor1();
 
-    Tensor& tensor = functor1.getResult<Tensor>().get();
+    Tensor& tensor = functor1.getResultValue<Tensor>();
 
     EXPECT_TRUE(std::equal(param0.element_begin<float>(),
                            param0.element_end<float>(),
@@ -389,18 +387,18 @@ TEST(SupportTest, opfunctor_accessor_vector) {
     OpFunctor params(&getVectorResult);
     OpFunctor addFunc(&add);
 
-    addFunc.capture(0, params.getResult<std::vector<Tensor>>(),
-                    &std::vector<Tensor>::operator[], size_t(1));
-    addFunc.capture(1, params.getResult<std::vector<Tensor>>(),
-                    &std::vector<Tensor>::operator[], size_t(2));
+    addFunc.capture(0, params.getResult(), &std::vector<Tensor>::operator[],
+                    size_t(1));
+    addFunc.capture(1, params.getResult(), &std::vector<Tensor>::operator[],
+                    size_t(2));
 
     params(size_t{4});
     addFunc();
 
-    for (auto& t : params.getResult<std::vector<Tensor>>().get()) {
+    for (auto& t : params.getResultValue<std::vector<Tensor>>()) {
         LOG(WARN) << t;
     }
-    LOG(WARN) << addFunc.getResult<Tensor>().get();
+    LOG(WARN) << addFunc.getResultValue<Tensor>();
 
     auto tensors = getVectorResult(size_t{4});
     auto direct_result = add(tensors[1], tensors[2]);
@@ -432,24 +430,22 @@ TEST(SupportTest, opfunctor_accessor_tuple) {
     Tensor& (*get0)(std::tuple<Tensor, size_t>&) = &std::get<0, Tensor, size_t>;
     size_t& (*get1)(std::tuple<Tensor, size_t>&) = &std::get<1, Tensor, size_t>;
 
-    tensor_addFunc.capture(0, params.getResult<std::tuple<Tensor, size_t>>(),
-                           get0);
+    tensor_addFunc.capture(0, params.getResult(), get0);
     tensor_addFunc.capture(1, rhs_tensor);
 
-    scalar_addFunc.capture(0, params.getResult<std::tuple<Tensor, size_t>>(),
-                           get1);
+    scalar_addFunc.capture(0, params.getResult(), get1);
     scalar_addFunc.capture(1, size_t(1));
 
     params();
     tensor_addFunc();
-    auto& tt = params.getResult<std::tuple<Tensor, size_t>>().get();
+    auto& tt = params.getResultValue<std::tuple<Tensor, size_t>>();
     std::get<1>(tt) += 1;
     scalar_addFunc();
 
-    LOG(WARN) << tensor_addFunc.getResult<Tensor>().get();
-    LOG(WARN) << scalar_addFunc.getResult<size_t>().get();
+    LOG(WARN) << tensor_addFunc.getResultValue<Tensor>();
+    LOG(WARN) << scalar_addFunc.getResultValue<size_t>();
 
-    EXPECT_EQ(scalar_addFunc.getResult<size_t>().get(), 18);
+    EXPECT_EQ(scalar_addFunc.getResultValue<size_t>(), 18);
 }
 
 TEST(SupportTest, functor_pure_view) {
@@ -463,7 +459,7 @@ TEST(SupportTest, functor_pure_view) {
     EXPECT_EQ(vec_int[index0], 2);
 
     Any any(vec_int, Any::by_reference_tag());
-    PlaceHolder<Type> ph(&any);
+    PlaceHolder ph(&any);
 
     size_t index1 = 2;
     ViewFunctor view1(&Type::operator[], ph, index1);
@@ -560,7 +556,7 @@ TEST(SupportTest, opfunctor_tensor_perf) {
     functor0.captureByReference(1, param1_clone);
 
     OpFunctor functor1(&sub);
-    functor1.capture(0, functor0.getResult<Tensor>());
+    functor1.capture(0, functor0.getResult());
     functor1.captureByReference(1, param1_clone);
 
     Tensor plain_result;
@@ -579,7 +575,7 @@ TEST(SupportTest, opfunctor_tensor_perf) {
             functor1();
         }
     }
-    Tensor& tensor = functor1.getResult<Tensor>().get();
+    Tensor& tensor = functor1.getResultValue<Tensor>();
 
     EXPECT_TRUE(std::equal(tensor.element_begin<float>(),
                            tensor.element_end<float>(),
@@ -621,7 +617,7 @@ TEST(SupportTest, opfunctor_tensor_perf_single) {
         }
     }
 
-    Tensor& tensor = functor0.getResult<Tensor>().get();
+    Tensor& tensor = functor0.getResultValue<Tensor>();
 
     EXPECT_TRUE(std::equal(tensor.element_begin<float>(),
                            tensor.element_end<float>(),

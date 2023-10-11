@@ -350,6 +350,12 @@ class FunctorBase {
     FunctorBase& operator=(const FunctorBase& other) = delete;
 
     void resizeArgs(size_t argsSize) {
+        if (args_) {
+            for (size_t i = 0; i < argsSize_; ++i) {
+                (args_ + i)->~__Any();
+            }
+            SimpleAllocater::dealloc(args_);
+        }
         argsSize_ = argsSize;
         args_ = reinterpret_cast<Any*>(
             SimpleAllocater::alloc(sizeof(Any) * argsSize));
@@ -507,15 +513,16 @@ class Functor : public SpecialFunctorBase<U> {
     void (*args_destructor_)(Any* any){nullptr};
 };
 
-template <typename T>
 class PlaceHolder {
    public:
     PlaceHolder(Any* any) : any_(any) {}
 
     auto operator[](size_t index);
 
-    T& get() { return any_->as<T>(); }
-    // operator T&() { return any_->as<T>(); }
+    template <typename T>
+    T& get() {
+        return any_->as<T>();
+    }
     Any* data() { return any_; }
 
    private:
@@ -529,8 +536,7 @@ class ViewFunctor : public Functor<void> {
     static constexpr size_t extraArgumentSize = 3;
     // using Base::args_destructor;
     template <typename ClsT, typename R, typename... Args>
-    constexpr ViewFunctor(R (ClsT::*ptr)(Args...),
-                          PlaceHolder<ClsT> obj = nullptr)
+    constexpr ViewFunctor(R (ClsT::*ptr)(Args...), PlaceHolder obj = nullptr)
         : Base(),
           resultIndex_(sizeof...(Args) + extraArgumentSize - 1),
           objIndex_(1),
@@ -554,18 +560,25 @@ class ViewFunctor : public Functor<void> {
     }
 
     template <typename ClsT, typename R, typename... Args, typename... RArgs>
-    ViewFunctor(R (ClsT::*ptr)(Args...), PlaceHolder<ClsT> obj, RArgs&&... args)
+    ViewFunctor(R (ClsT::*ptr)(Args...), PlaceHolder obj, RArgs&&... args)
         : ViewFunctor(ptr, obj) {
         unpack(2, std::make_index_sequence<sizeof...(args)>(),
                static_cast<Args>(std::forward<RArgs>(args))...);
     }
 
-    template <typename R, typename... Args, typename ObjT>
-    ViewFunctor(R (*ptr)(Args...), PlaceHolder<ObjT> obj)
+    template <typename R, typename... Args>
+    ViewFunctor(R (*ptr)(Args...), PlaceHolder obj)
         : Base(ptr), anyObj_(obj.data()) {
         // relalloc append output argument
         resizeArgs(sizeof...(Args) + 1);
         resultIndex_ = sizeof...(Args);
+    }
+
+    ViewFunctor(PlaceHolder obj) : Base(), anyObj_(obj.data()) {
+        resizeArgs(1);
+        objIndex_ = 0;
+        resultIndex_ = 0;
+        this->invoker_ = nullptr;
     }
 
     ViewFunctor(ViewFunctor&& other) : Base(std::move(other)) {
@@ -594,7 +607,7 @@ class ViewFunctor : public Functor<void> {
     void operator()() {
         assert(*anyObj_ && "can't share empty object!");
         anyObj_->share_self(this->args_[objIndex_]);
-        this->invoker_(this->funcPtr_, this->args_);
+        if (this->invoker_) this->invoker_(this->funcPtr_, this->args_);
     }
 
     template <typename T>
@@ -617,22 +630,11 @@ class ViewFunctor : public Functor<void> {
 };
 
 template <typename T>
-auto __internal_operator_square_brackets(T& t, size_t index) {
-    return t[index];
-}
-
-template <typename T>
 T& __internal_operator_forward(T& t) {
     return t;
 }
 
 class OpFunctor;
-
-template <>
-class PlaceHolder<Any> : public std::reference_wrapper<Any> {
-   public:
-    using std::reference_wrapper<Any>::reference_wrapper;
-};
 
 class OpFunctor : public Functor<void> {
    public:
@@ -725,46 +727,33 @@ class OpFunctor : public Functor<void> {
         Functor<void>::operator()(std::forward<Args>(args)...);
     }
 
-    template <typename T>
-    void capture(size_t index, PlaceHolder<T> ph) {
-        lazyFeedFuncs_.emplace_back(&__internal_operator_forward<T>, ph);
+    void capture(size_t index, PlaceHolder ph) {
+        lazyFeedFuncs_.emplace_back(ph);
         auto& back = lazyFeedFuncs_.back();
         back.func.setCaptureIndex(static_cast<int64_t>(index));
     }
 
     template <typename ClsT, typename R, typename... Args>
-    void capture(size_t index, PlaceHolder<Any> placeHolder,
-                 R (ClsT::*ptr)(Args...), Args... args) {
-        lazyFeedFuncs_.emplace_back(ptr, placeHolder, args...);
-        lazyFeedFuncs_.back().func.setCaptureIndex(static_cast<int64_t>(index));
-    }
-
-    template <typename T, typename ClsT, typename R, typename... Args>
-    void capture(size_t index, PlaceHolder<T> placeHolder,
-                 R (ClsT::*ptr)(Args...), Args... args) {
+    void capture(size_t index, PlaceHolder placeHolder, R (ClsT::*ptr)(Args...),
+                 Args... args) {
         lazyFeedFuncs_.emplace_back(ptr, placeHolder, args...);
         lazyFeedFuncs_.back().func.setCaptureIndex(static_cast<int64_t>(index));
     }
 
     template <typename R, typename... Args>
-    void capture(size_t index, PlaceHolder<Any> placeHolder,
-                 R (*ptr)(Args...)) {
-        lazyFeedFuncs_.emplace_back(ptr, placeHolder.get());
-        lazyFeedFuncs_.back().func.setCaptureIndex(static_cast<int64_t>(index));
-    }
-
-    template <typename T, typename R, typename... Args>
-    void capture(size_t index, PlaceHolder<T> placeHolder, R (*ptr)(Args...)) {
-        lazyFeedFuncs_.emplace_back(ptr, placeHolder);
+    void capture(size_t index, PlaceHolder placeHolder, R (*ptr)(Args...)) {
+        lazyFeedFuncs_.emplace_back(ptr, placeHolder.data());
         lazyFeedFuncs_.back().func.setCaptureIndex(static_cast<int64_t>(index));
     }
 
     template <typename T>
-    PlaceHolder<T> getResult() {
-        return PlaceHolder<T>(this->getResult());
+    T& getResultValue() {
+        return getAnyResult()->as<T>();
     }
 
-    Any* getResult() { return this->args_ + argsSize_; }
+    PlaceHolder getResult() { return PlaceHolder(this->getAnyResult()); }
+
+    Any* getAnyResult() { return this->args_ + argsSize_; }
 
     Any* getArgs() { return this->args_; }
 
