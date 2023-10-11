@@ -7,6 +7,7 @@
 #include <memory>
 #include <sstream>
 #include <thread>
+#include <limits>
 #ifndef HAS_NOT_FMT_LIB
 #include "fmt/core.h"
 #endif
@@ -90,6 +91,8 @@ class LogStream {
 
     void flush();
 
+    void flush_consumer();
+
     LogLevel getLevel() const { return level_; }
 
     const char* getStrLevel(LogLevel level) {
@@ -150,6 +153,12 @@ struct LogWrapper {
             LogStream::instance().flush();
         }
         totalDur += std::chrono::high_resolution_clock::now() - st_;
+        // crash here
+        if (LOGGER_UNLIKELY(level_ == LogLevel::fatal)) {
+            LogStream::instance().flush_consumer();
+            int s = 0;
+            *reinterpret_cast<int*>(s) = 0;
+        }
     }
     LogLevel level_;
     std::chrono::high_resolution_clock::time_point st_;
@@ -303,12 +312,11 @@ void initLogger(const LogConfig& = LogConfig{});
 
 #define LOG(level) LOG_IMPL(static_cast<int>(level))
 
-#define CHECK(p, ...)                                            \
-    do {                                                         \
-        if (!(p)) {                                              \
-            LOG(ERROR) << __FILE__ << ":" << __LINE__;           \
-            throw std::runtime_error(__FMT_FUNC__(__VA_ARGS__)); \
-        }                                                        \
+#define CHECK(p, ...)                                  \
+    do {                                               \
+        if (!(p)) {                                    \
+            LOG(FATAL) << __FILE__ << ":" << __LINE__; \
+        }                                              \
     } while (0)
 
 #define CHECK_LT(l, r, ...) CHECK(((l) < (r)), __VA_ARGS__)

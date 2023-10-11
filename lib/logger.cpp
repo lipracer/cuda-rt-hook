@@ -236,6 +236,10 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
         th_->detach();
     }
 
+    void flush() {
+        if (th_) th_->join();
+    }
+
     StringQueue& queue() { return buf_; }
 
    private:
@@ -294,6 +298,8 @@ void LogStream::flush() {
         logConsumer_->pushLog(ss_);
     }
 }
+
+void LogStream::flush_consumer() { logConsumer_->flush(); }
 
 void initLogger(const LogConfig& cfg) { (void)LogStream::instance(cfg); }
 
