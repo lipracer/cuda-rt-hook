@@ -39,11 +39,9 @@ void __any_mock_func__() {
     asm volatile("pop %rbp");
     asm volatile("push %rax");
     asm volatile("push %rdi");
-    asm volatile("push %rdi");
     if (!setjmp(log_jump_buffer)) {
         log_router();
     }
-    asm volatile("pop %rdi");
     asm volatile("pop %rdi");
     asm volatile("pop %rax");
     asm volatile("add    $0x8,%rsp");
