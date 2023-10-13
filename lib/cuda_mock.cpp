@@ -34,17 +34,29 @@ void log_router() {
 }
 
 void __any_mock_func__() {
-    // why need not pop rbp, inline??
-    // asm volatile("pop %rbp");
+// Conditional code for x86_64 architecture
+#if defined(__x86_64__)
+    asm volatile("pop %rbp");
     asm volatile("push %rax");
+    asm volatile("push %rdi");
     asm volatile("push %rdi");
     if (!setjmp(log_jump_buffer)) {
         log_router();
     }
     asm volatile("pop %rdi");
+    asm volatile("pop %rdi");
     asm volatile("pop %rax");
     asm volatile("add    $0x8,%rsp");
     asm volatile("jmp *%0" : : "r"(oldFuncAddr));
+
+// Conditional code for aarch64 architecture
+#else
+    // asm volatile("push {r0}");
+    // if (!setjmp(log_jump_buffer)) {
+    //     log_router();
+    // }
+    // asm volatile("pop {r0}");
+#endif
 }
 
 int builtin_printf(int flag, const char* fmt, va_list argp) {
