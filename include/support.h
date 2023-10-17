@@ -131,6 +131,11 @@ class __Any : public AnyTypeChecker {
     }
 
     template <typename T>
+    constexpr __Any(const T& t, by_reference_tag) : AnyTypeChecker(t) {
+        buf_ = const_cast<void*>((void*)&t);
+    }
+
+    template <typename T>
     constexpr __Any(T t, size_t size, by_deepcopy_tag)
         : __Any(t, by_value_tag()) {
         auto buf = AllocT::alloc(size);
@@ -515,7 +520,7 @@ class Functor : public SpecialFunctorBase<U> {
 
 class PlaceHolder {
    public:
-    PlaceHolder(Any* any) : any_(any) {}
+    constexpr PlaceHolder(Any* any) : any_(any) {}
 
     auto operator[](size_t index);
 
@@ -628,11 +633,6 @@ class ViewFunctor : public Functor<void> {
     size_t objIndex_{0};
     Any* anyObj_{nullptr};
 };
-
-template <typename T>
-T& __internal_operator_forward(T& t) {
-    return t;
-}
 
 class OpFunctor;
 
