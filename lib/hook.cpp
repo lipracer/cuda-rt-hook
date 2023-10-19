@@ -260,13 +260,16 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         originalInfo.libName = pltTable->lib_name.c_str();
         originalInfo.basePtr = pltTable->base_addr;
         originalInfo.relaPtr = pltTable->rela_plt;
+        originalInfo.pltTablePtr = reinterpret_cast<void**>(addr);
         originalInfo.oldFuncPtr =
             reinterpret_cast<void*>(*reinterpret_cast<size_t*>(addr));
         *reinterpret_cast<size_t*>(addr) =
             reinterpret_cast<size_t>(installer.newFuncPtr(originalInfo));
-        if (!(prot & PROT_WRITE)) {
-            mprotect(ALIGN_ADDR(addr), page_size, prot);
-        }
+        // we will not recover the address protect
+        // TODO: move this to uninstall function
+        // if (!(prot & PROT_WRITE)) {
+        //     mprotect(ALIGN_ADDR(addr), page_size, prot);
+        // }
         LOG(INFO) << "replace:" << pltTable->symbol_table + idx << " with "
                   << pltTable->symbol_table + idx << " success";
         if (installer.onSuccess) {
@@ -376,8 +379,8 @@ void install_hook(const HookInstaller& installer) {
     }
 }
 
-void uninstall_hook(const HookInstaller& installer) {
-    CHECK(false, "TODO");
+void uninstall_hook(const OriginalInfo& info) {
+    *info.pltTablePtr = info.oldFuncPtr;
 }
 
 }  // namespace hook

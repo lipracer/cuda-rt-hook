@@ -15,6 +15,7 @@ struct OriginalInfo {
     const void* basePtr = nullptr;
     void* relaPtr = nullptr;
     void* oldFuncPtr = nullptr;
+    void** pltTablePtr = nullptr;
 };
 
 std::ostream& operator<<(std::ostream& os, const OriginalInfo& info);
@@ -26,9 +27,20 @@ struct HookInstaller {
     std::function<void(void)> onSuccess;
 };
 
+
+void install_hook(const HookInstaller& installer);
+
+void uninstall_hook(const OriginalInfo& info);
+
 template <typename DerivedT>
 struct HookInstallerWrap
     : public std::enable_shared_from_this<HookInstallerWrap<DerivedT>> {
+    // NB: c++ std::shared_ptr and enable_shared_from_this
+    // shared_from_this can't call in ctor
+    void install() { install_hook(buildInstaller()); }
+
+    ~HookInstallerWrap() { uninstall_hook(orgInfo); }
+
     bool targetLib(const char* name) {
         libName = name;
         isTarget = static_cast<DerivedT*>(this)->targetLib(name);
@@ -41,6 +53,7 @@ struct HookInstallerWrap
     }
 
     void* newFuncPtr(const hook::OriginalInfo& info) {
+        orgInfo = info;
         return static_cast<DerivedT*>(this)->newFuncPtr(info);
     }
 
@@ -72,10 +85,7 @@ struct HookInstallerWrap
     bool isSymbol{false};
     const char* libName{nullptr};
     const char* symName{nullptr};
+    OriginalInfo orgInfo;
 };
-
-void install_hook(const HookInstaller& installer);
-
-void uninstall_hook(const HookInstaller& installer);
 
 }  // namespace hook

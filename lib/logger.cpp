@@ -161,6 +161,9 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
     }
 
     void pushLog(std::stringstream& ss) {
+        if (LOGGER_UNLIKELY(exit_.load())) {
+            return;
+        }
         auto str = ss.str();
         {
             std::lock_guard<std::mutex> guard(mtx_);
@@ -233,11 +236,13 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
 
     ~LogConsumer() {
         exit_.store(true);
-        th_->detach();
     }
 
-    void flush() {
+    void report_fatal() {
+        exit_.store(true);
         if (th_) th_->join();
+        // write nullptr statement maybe be motion to front
+        (void)malloc(std::numeric_limits<size_t>::max());
     }
 
     StringQueue& queue() { return buf_; }
@@ -299,7 +304,7 @@ void LogStream::flush() {
     }
 }
 
-void LogStream::flush_consumer() { logConsumer_->flush(); }
+void LogStream::log_fatal() { logConsumer_->report_fatal(); }
 
 void initLogger(const LogConfig& cfg) { (void)LogStream::instance(cfg); }
 

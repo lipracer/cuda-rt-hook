@@ -91,8 +91,6 @@ class LogStream {
 
     void flush();
 
-    void flush_consumer();
-
     LogLevel getLevel() const { return level_; }
 
     const char* getStrLevel(LogLevel level) {
@@ -105,6 +103,8 @@ class LogStream {
     LogConsumer* logConsumer() { return logConsumer_.get(); }
 
     std::ostream& getStream() { return ss_; }
+
+    void log_fatal();
 
    private:
     LogLevel level_ = LogLevel::warning;
@@ -155,9 +155,7 @@ struct LogWrapper {
         totalDur += std::chrono::high_resolution_clock::now() - st_;
         // crash here
         if (LOGGER_UNLIKELY(level_ == LogLevel::fatal)) {
-            LogStream::instance().flush_consumer();
-            int s = 0;
-            *reinterpret_cast<int*>(s) = 0;
+            LogStream::instance().log_fatal();
         }
     }
     LogLevel level_;

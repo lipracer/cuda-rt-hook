@@ -63,7 +63,6 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib)
 
 # Install directive for scikit-build-core
 install(TARGETS cuda_mock_impl LIBRARY DESTINATION cuda_mock)
-target_link_libraries(cuda_mock_impl LINK_PUBLIC ${Boost_LIBRARIES})
 
 ################################
 # GTest
@@ -73,7 +72,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest)
 
 file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp")
 add_executable(UnitTest ${TEST_SOURCES})
-target_link_libraries(UnitTest gtest gtest_main logger)
+target_link_libraries(UnitTest gtest gtest_main logger plthook)
 add_test(NAME UnitTest COMMAND UnitTest)
 
 target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/googletest/include)
