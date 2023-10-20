@@ -57,7 +57,7 @@ find_package(nanobind CONFIG REQUIRED)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/nanobind)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/python)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib)
 
 
