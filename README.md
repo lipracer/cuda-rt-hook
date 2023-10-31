@@ -1,7 +1,7 @@
 ## The plt hook technology used refers to [plthook](https://github.com/kubo/)  
 #### mock pytorch cuda runtime interface
 
-- update submodule
+- update submodule  
 `git submodule update --init --recursive`
 
 - build wheel package  
