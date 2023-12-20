@@ -15,6 +15,7 @@ add_library(cuda_mock STATIC
     hook.cpp 
     cuda_op_tracer.cpp 
     backtrace.cpp
+    xpu_mock.cpp
 )
 
 

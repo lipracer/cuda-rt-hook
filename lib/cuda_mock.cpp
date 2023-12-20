@@ -1,8 +1,9 @@
 #include "cuda_mock.h"
 
 #include <dlfcn.h>
-#include <csetjmp>
 #include <string.h>
+
+#include <csetjmp>
 
 #include "backtrace.h"
 #include "cuda_op_tracer.h"
