@@ -1,6 +1,7 @@
 #include <nanobind/nanobind.h>
 
 #include "cuda_mock.h"
+#include "xpu_mock.h"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -19,4 +20,5 @@ NB_MODULE(cuda_mock_impl, m) {
               dh_internal_install_hook(srcLib, targetLib, symbolName,
                                        hookerLibPath, hookerSymbolName);
           });
+    m.def("xpu_initialize", []() { xpu_dh_initialize(); });
 }
