@@ -91,6 +91,20 @@ void dh_internal_install_hook(const char* srcLib, const char* targetLib,
                                                   .targeLib = targetLib,
                                                   .symbolName = symbolName,
                                                   .newFuncPtr = hookerAddr});
+    auto newFuncPtr = hookInstaller.newFuncPtr;
+    hookInstaller.newFuncPtr =
+        [ = ](const hook::OriginalInfo& orgInfo) -> void* {
+        auto handle = dlopen(hookerLibPath, RTLD_LAZY);
+        CHECK(handle, "can't not dlopen {}", hookerLibPath);
+        std::string org_symbol = "__origin_" + std::string(symbolName);
+        auto org_addr = dlsym(handle, org_symbol.c_str());
+        if (org_addr) {
+            *reinterpret_cast<void**>(org_addr) = orgInfo.oldFuncPtr;
+        } else {
+            LOG(WARN) << "can't find symbol:" << org_symbol;
+        }
+        return newFuncPtr(orgInfo);
+    };
     hookInstaller.onSuccess = [&]() {
         oldFuncAddr =
             trace::CudaInfoCollection::instance().getSymbolAddr(symbolName);
