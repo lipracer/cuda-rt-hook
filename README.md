@@ -36,6 +36,17 @@
 - 开始跑你的训练脚本
 - 我们将会把堆栈打印到控制台
 
+### 收集统计xpu runtime 内存分配信息/`xpu_wait`调用堆栈
+- 打印`xpu_malloc`调用序列，统计实时内存使用情况以及历史使用的峰值内存，排查内存碎片问题
+- 打印`xpu_wait`调用堆栈，排查流水中断处问题
+- 注意要在`import torch`/`import paddle`之后`import cuda_mock; cuda_mock.xpu_initialize()`
+- 使用方法:
+
+```python
+import paddle
+import cuda_mock; cuda_mock.xpu_initialize() # 加入这一行
+```
+
 ### example
 `python test/test_import_mock.py`
 
