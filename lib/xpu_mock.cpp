@@ -190,7 +190,8 @@ int XpuRuntimeWrapApi::xpuWait(void* devStream) {
             std::string path(info.dli_fname);
             LOG(WARN) << "    frame " << j << path << ":" << demangled;
         } else {
-            LOG(WARN) << "    frame " << j << call_stack[j];
+            // filtering useless print
+            // LOG(WARN) << "    frame " << j << call_stack[j];
         }
     }
     free(symbols);
