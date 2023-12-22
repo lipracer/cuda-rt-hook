@@ -9,7 +9,8 @@ add_library(logger STATIC
 #    PRIVATE USE_STL_QUEUE
 #)
 
-add_library(cuda_mock STATIC 
+add_library(cuda_mock STATIC
+    GlobalVarMgr.cpp
     logger.cpp
     cuda_mock.cpp 
     hook.cpp 

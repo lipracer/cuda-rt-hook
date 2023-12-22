@@ -5,6 +5,7 @@
 
 #include <csetjmp>
 
+#include "GlobalVarMgr.h"
 #include "backtrace.h"
 #include "cuda_op_tracer.h"
 #include "hook.h"
@@ -17,16 +18,17 @@ std::jmp_buf log_jump_buffer = {{}};
 extern "C" {
 
 void dh_initialize() {
+    hook::init_all_global_variables();
     LOG(INFO) << "initialize";
     hook::HookInstaller hookInstaller = trace::getHookInstaller();
     hook::install_hook(hookInstaller);
     // hook::install_hook();
 }
 
-static void* oldFuncAddr = nullptr;
+static hook::GlobalVarMgr<void*> oldFuncAddr(nullptr);
 
 void log_router() {
-    LOG(INFO) << __func__ << ":" << oldFuncAddr;
+    LOG(INFO) << __func__ << ":" << *oldFuncAddr;
     // sometime will crash
     // trace::BackTraceCollection::CallStackInfo tracer({});
     // tracer.snapshot();
@@ -37,16 +39,17 @@ void log_router() {
 void __any_mock_func__() {
 // Conditional code for x86_64 architecture
 #if defined(__x86_64__)
-    asm volatile("pop %rbp");
-    asm volatile("push %rax");
-    asm volatile("push %rdi");
-    if (!setjmp(log_jump_buffer)) {
-        log_router();
-    }
-    asm volatile("pop %rdi");
-    asm volatile("pop %rax");
-    asm volatile("add    $0x8,%rsp");
-    asm volatile("jmp *%0" : : "r"(oldFuncAddr));
+    // avoid inline asm, use varidic c func and parse func result
+    // asm volatile("pop %rbp");
+    // asm volatile("push %rax");
+    // asm volatile("push %rdi");
+    // if (!setjmp(log_jump_buffer)) {
+    //     log_router();
+    // }
+    // asm volatile("pop %rdi");
+    // asm volatile("pop %rax");
+    // asm volatile("add    $0x8,%rsp");
+    // asm volatile("jmp *%0" : : "r"(oldFuncAddr));
 
 // Conditional code for aarch64 architecture
 #else
@@ -66,17 +69,18 @@ int builtin_printf(int flag, const char* fmt, va_list argp) {
     return 0;
 }
 
-static std::unordered_map<std::string, void*> gBuiltinFuncs = {
-    {"__printf_chk", reinterpret_cast<void*>(&builtin_printf)},
-};
+static hook::GlobalVarMgr<std::unordered_map<std::string, void*>> gBuiltinFuncs(
+    std::unordered_map<std::string, void*>{
+        std::make_pair("__printf_chk",
+                       reinterpret_cast<void*>(&builtin_printf))});
 
 void dh_internal_install_hook(const char* srcLib, const char* targetLib,
                               const char* symbolName, const char* hookerLibPath,
                               const char* hookerSymbolName) {
     LOG(INFO) << "initialize srcLib:" << srcLib << " targetLib:" << targetLib
               << " symbolName:" << symbolName;
-    auto iter = gBuiltinFuncs.find(symbolName);
-    auto hookerAddr = iter == gBuiltinFuncs.end()
+    auto iter = gBuiltinFuncs->find(symbolName);
+    auto hookerAddr = iter == gBuiltinFuncs->end()
                           ? reinterpret_cast<void*>(&__any_mock_func__)
                           : iter->second;
     if (hookerLibPath) {
@@ -92,8 +96,7 @@ void dh_internal_install_hook(const char* srcLib, const char* targetLib,
                                                   .symbolName = symbolName,
                                                   .newFuncPtr = hookerAddr});
     auto newFuncPtr = hookInstaller.newFuncPtr;
-    hookInstaller.newFuncPtr =
-        [ = ](const hook::OriginalInfo& orgInfo) -> void* {
+    hookInstaller.newFuncPtr = [=](const hook::OriginalInfo& orgInfo) -> void* {
         auto handle = dlopen(hookerLibPath, RTLD_LAZY);
         CHECK(handle, "can't not dlopen {}", hookerLibPath);
         std::string org_symbol = "__origin_" + std::string(symbolName);
@@ -106,9 +109,9 @@ void dh_internal_install_hook(const char* srcLib, const char* targetLib,
         return newFuncPtr(orgInfo);
     };
     hookInstaller.onSuccess = [&]() {
-        oldFuncAddr =
+        *oldFuncAddr =
             trace::CudaInfoCollection::instance().getSymbolAddr(symbolName);
-        LOG(INFO) << __func__ << ":" << oldFuncAddr;
+        LOG(INFO) << __func__ << ":" << *oldFuncAddr;
     };
     hook::install_hook(hookInstaller);
 }
