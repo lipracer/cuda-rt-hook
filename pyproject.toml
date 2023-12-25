@@ -11,7 +11,7 @@ requires-python = ">=3.8"
 authors = [
     { name = "lipracer", email = "lipracer@gmail.com" },
 ]
-license = "BSD-3-Clause"
+license = { text = "BSD-3-Clause" }
 
 [project.urls]
 Homepage = "https://github.com/lipracer/torch-cuda-mock"
