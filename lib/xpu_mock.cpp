@@ -206,9 +206,18 @@ int XpuRuntimeWrapApi::xpuWait(void* devStream) {
 int XpuRuntimeWrapApi::xpuMemcpy(void* dst, const void* src, uint64_t size,
                                  int kind) {
     LOG(WARN) << "[XpuRuntimeWrapApi xpuMemcpy]"
+              << "entering PyGILState_Ensure";
+
+    // Acquire the Global Interpreter Lock (GIL) before calling Python C API
+    // functions from non-Python threads.
+    PyGILState_STATE gstate = PyGILState_Ensure();
+
+    LOG(WARN) << "[XpuRuntimeWrapApi xpuMemcpy]"
+              << "after PyGILState_Ensure";
+    LOG(WARN) << "[XpuRuntimeWrapApi xpuMemcpy]"
               << "Python stack trace:";
-    PyThreadState* tstate = PyThreadState_GET();
     // https://stackoverflow.com/questions/1796510/accessing-a-python-traceback-from-the-c-api
+    PyThreadState* tstate = PyThreadState_GET();
     if (NULL != tstate && NULL != tstate->frame) {
         PyFrameObject* frame = tstate->frame;
 
@@ -225,6 +234,7 @@ int XpuRuntimeWrapApi::xpuMemcpy(void* dst, const void* src, uint64_t size,
             frame = frame->f_back;
         }
     }
+    PyGILState_Release(gstate);
     return XpuRuntimeWrapApi::instance().raw_xpu_memcpy_(dst, src, size, kind);
 }
 
