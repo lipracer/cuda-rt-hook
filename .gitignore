@@ -1,3 +1,4 @@
 build/**
 *.whl
 .vscode/**
+dist/**
