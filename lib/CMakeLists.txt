@@ -20,6 +20,8 @@ add_library(cuda_mock STATIC
 )
 
 
+target_include_directories(cuda_mock PUBLIC ${Python_INCLUDE_DIRS})
+
 set_target_properties(cuda_mock PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(cuda_mock PRIVATE fmt::fmt-header-only)

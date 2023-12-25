@@ -1,7 +1,9 @@
 #include "xpu_mock.h"
 
+#include <Python.h>
 #include <dlfcn.h>  // dladdr
 #include <execinfo.h>
+#include <frameobject.h>
 
 #include <cstdint>
 #include <cstring>
@@ -28,12 +30,14 @@ class XpuRuntimeWrapApi {
     static int xpuMalloc(void** pDevPtr, uint64_t size, int kind);
     static int xpuFree(void* devPtr);
     static int xpuWait(void* devStream);
+    static int xpuMemcpy(void* dst, const void* src, uint64_t size, int kind);
 
    private:
     std::function<int(void**, uint64_t, int)> raw_xpu_malloc_;
     std::function<int(void*)> raw_xpu_free_;
     std::function<int(int*)> raw_xpu_current_device_;
     std::function<int(void*)> raw_xpu_wait_;
+    std::function<int(void*, const void*, uint64_t, int)> raw_xpu_memcpy_;
 
     enum class XpuMemKind { GLOBAL_MEMORY = 0, L3_MEMORY };
 
@@ -170,7 +174,7 @@ int XpuRuntimeWrapApi::xpuFree(void* devPtr) {
 }
 
 int XpuRuntimeWrapApi::xpuWait(void* devStream) {
-    constexpr size_t kMaxStackDeep = 512;
+    constexpr int kMaxStackDeep = 512;
     void* call_stack[kMaxStackDeep] = {0};
     char** symbols = nullptr;
     int num = backtrace(call_stack, kMaxStackDeep);
@@ -197,7 +201,31 @@ int XpuRuntimeWrapApi::xpuWait(void* devStream) {
     free(symbols);
 
     return XpuRuntimeWrapApi::instance().raw_xpu_wait_(devStream);
-    ;
+}
+
+int XpuRuntimeWrapApi::xpuMemcpy(void* dst, const void* src, uint64_t size,
+                                 int kind) {
+    LOG(WARN) << "[XpuRuntimeWrapApi xpuMemcpy]"
+              << "Python stack trace:";
+    PyThreadState* tstate = PyThreadState_GET();
+    // https://stackoverflow.com/questions/1796510/accessing-a-python-traceback-from-the-c-api
+    if (NULL != tstate && NULL != tstate->frame) {
+        PyFrameObject* frame = tstate->frame;
+
+        while (NULL != frame) {
+            // int line = frame->f_lineno;
+            /*
+            frame->f_lineno will not always return the correct line number
+            you need to call PyCode_Addr2Line().
+            */
+            int line = PyCode_Addr2Line(frame->f_code, frame->f_lasti);
+            const char* filename = PyUnicode_AsUTF8(frame->f_code->co_filename);
+            const char* funcname = PyUnicode_AsUTF8(frame->f_code->co_name);
+            LOG(WARN) << "    " << filename << "(" << line << "): " << funcname;
+            frame = frame->f_back;
+        }
+    }
+    return XpuRuntimeWrapApi::instance().raw_xpu_memcpy_(dst, src, size, kind);
 }
 
 struct XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
@@ -207,7 +235,8 @@ struct XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
 
     bool targetSym(const char* name) {
         return strstr(name, "xpu_malloc") || strstr(name, "xpu_free") ||
-               strstr(name, "xpu_current_device") || strstr(name, "xpu_wait");
+               strstr(name, "xpu_current_device") || strstr(name, "xpu_wait") ||
+               strstr(name, "xpu_memcpy");
     }
 
     void* newFuncPtr(const hook::OriginalInfo& info) {
@@ -246,6 +275,15 @@ struct XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
                               std::placeholders::_1);
             }
             return reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuWait);
+        } else if (strstr(curSymName(), "xpu_memcpy")) {
+            LOG(WARN) << "[XpuRuntimeApiHook][xpu_memcpy]:" << info.libName;
+            if (!XpuRuntimeWrapApi::instance().raw_xpu_memcpy_) {
+                XpuRuntimeWrapApi::instance().raw_xpu_memcpy_ =
+                    std::bind(reinterpret_cast<int((*)(...))>(info.oldFuncPtr),
+                              std::placeholders::_1, std::placeholders::_2,
+                              std::placeholders::_3, std::placeholders::_4);
+            }
+            return reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuMemcpy);
         }
         CHECK(0, "capture wrong function: {}", curSymName());
         return nullptr;
