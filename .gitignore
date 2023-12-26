@@ -2,3 +2,5 @@ build/**
 *.whl
 .vscode/**
 dist/**
+build_cpp/**
+src/cuda_mock.egg-info/**
