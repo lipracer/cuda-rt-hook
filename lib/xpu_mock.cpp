@@ -21,9 +21,10 @@ namespace {
 
 class XpuRuntimeApiHook;
 
+static constexpr int kMaxXpuDeviceNum = 8;
+
 class XpuRuntimeWrapApi {
    public:
-    static constexpr int kMaxXpuDeviceNum = 8;
 
     static XpuRuntimeWrapApi& instance();
     XpuRuntimeWrapApi();
