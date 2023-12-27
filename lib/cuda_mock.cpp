@@ -85,7 +85,8 @@ void dh_internal_install_hook(const char* srcLib, const char* targetLib,
                           : iter->second;
     if (hookerLibPath) {
         auto handle = dlopen(hookerLibPath, RTLD_LAZY);
-        CHECK(handle, "can't not dlopen {}", hookerLibPath);
+        CHECK(handle, "can't not dlopen:{0} error info:{1}", hookerLibPath,
+              dlerror());
         hookerAddr =
             dlsym(handle, hookerSymbolName ? hookerSymbolName : symbolName);
     }
@@ -98,7 +99,8 @@ void dh_internal_install_hook(const char* srcLib, const char* targetLib,
     auto newFuncPtr = hookInstaller.newFuncPtr;
     hookInstaller.newFuncPtr = [=](const hook::OriginalInfo& orgInfo) -> void* {
         auto handle = dlopen(hookerLibPath, RTLD_LAZY);
-        CHECK(handle, "can't not dlopen {}", hookerLibPath);
+        CHECK(handle, "can't not dlopen {0} error info:{1}", hookerLibPath,
+              dlerror());
         std::string org_symbol = "__origin_" + std::string(symbolName);
         auto org_addr = dlsym(handle, org_symbol.c_str());
         if (org_addr) {

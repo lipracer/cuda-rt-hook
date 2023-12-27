@@ -12,6 +12,8 @@ def exec_shell(cmd, print_result = False):
             print(line.strip())
     return ''.join(lines)
 
+GCC_CXX_COMPILER = "g++"
+CLANG_CXX_COMPILER = "clang++"
 
 class DynamicObj:
     def __init__(self, file):
@@ -42,11 +44,11 @@ class DynamicObj:
         return self
 
     def check_env(self):
-        if len(self.get_compiler('gcc')) == 0:
-            self.compiler = "gcc"
+        if len(self.get_compiler(GCC_CXX_COMPILER)) == 0:
+            self.compiler = GCC_CXX_COMPILER
             return True
-        if len(self.get_compiler('clang')) == 0:
-            self.compiler = "clang"
+        if len(self.get_compiler(CLANG_CXX_COMPILER)) == 0:
+            self.compiler = CLANG_CXX_COMPILER
             return True
         return False
         

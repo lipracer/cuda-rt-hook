@@ -5,6 +5,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -156,6 +157,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
           cfg_(cfg) {
         tmpBuffer_.resize(256);
         if (cfg->mode == LogConfig::kAsync) {
+            future_ = promise_.get_future();
             th_ = std::make_unique<std::thread>(&LogConsumer::print, this);
         }
     }
@@ -232,15 +234,23 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
                 std::this_thread::yield();
             }
         }
+        self->promise_.set_value(0);
     }
 
-    ~LogConsumer() {
+    ~LogConsumer() { sync_pause_loop(); }
+
+    void sync_pause_loop() {
         exit_.store(true);
+        if (cfg_->mode == LogConfig::kAsync) {
+            // don't call join avoid this thread already exit
+            // if (th_) th_->join();
+            (void)future_.get();
+            fflush(cfg_->stream);
+        }
     }
 
     void report_fatal() {
-        exit_.store(true);
-        if (th_) th_->join();
+        sync_pause_loop();
         // write nullptr statement maybe be motion to front
         (void)malloc(std::numeric_limits<size_t>::max());
     }
@@ -256,6 +266,8 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
     std::shared_ptr<LogConfig> cfg_;
     std::condition_variable cv_;
     bool started_{false};
+    std::promise<int> promise_;
+    std::future<int> future_;
 };
 
 size_t StringLiteralBase::MN = 0;

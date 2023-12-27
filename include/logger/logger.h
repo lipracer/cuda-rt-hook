@@ -4,19 +4,12 @@
 #include <chrono>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <thread>
-#include <limits>
-#ifndef HAS_NOT_FMT_LIB
-#include "fmt/core.h"
-#endif
 
-#ifdef HAS_NOT_FMT_LIB
-#define __FMT_FUNC__(...) "unsupport fmt!"
-#else
-#define __FMT_FUNC__(...) fmt::format(__VA_ARGS__)
-#endif
+#include "fmt/core.h"
 
 #ifndef LOGGER_LIKELY
 #define LOGGER_LIKELY(x) __builtin_expect(!!(x), 1)
@@ -73,7 +66,7 @@ struct LogConfig {
         kSync,
         kAsync,
     };
-    size_t pageSize{4 * 1024 * 1024};
+    size_t pageSize{4 * 1024};
     LoggerMode mode{kAsync};
     std::FILE* stream{stdout};
 };
@@ -310,15 +303,29 @@ void initLogger(const LogConfig& = LogConfig{});
 
 #define LOG(level) LOG_IMPL(static_cast<int>(level))
 
-#define CHECK(p, ...)                                  \
-    do {                                               \
-        if (!(p)) {                                    \
-            LOG(FATAL) << __FILE__ << ":" << __LINE__; \
-        }                                              \
+#define INTERNAL_CHECK_IMPL(p, msg)                                  \
+    do {                                                             \
+        if (!(p)) {                                                  \
+            LOG(FATAL) << __FILE__ << ":" << __LINE__ << ":" << msg; \
+        }                                                            \
     } while (0)
 
-#define CHECK_LT(l, r, ...) CHECK(((l) < (r)), __VA_ARGS__)
-#define CHECK_LE(l, r, ...) CHECK(((l) <= (r)), __VA_ARGS__)
-#define CHECK_GT(l, r, ...) CHECK(((l) > (r)), __VA_ARGS__)
-#define CHECK_GE(l, r, ...) CHECK(((l) >= (r)), __VA_ARGS__)
-#define CHECK_EQ(l, r, ...) CHECK(((l) == (r)), __VA_ARGS__)
+#define CHECK(p, ...) INTERNAL_CHECK_IMPL((p), fmt::format(__VA_ARGS__))
+
+#define CHECK_LT(l, r, ...)          \
+    INTERNAL_CHECK_IMPL(((l) < (r)), \
+                        fmt::format("expect lhs:{} < rhs:{}", l, r))
+#define CHECK_LE(l, r, ...)           \
+    INTERNAL_CHECK_IMPL(((l) <= (r)), \
+                        fmt::format("expect lhs:{} <= rhs:{}", l, r))
+#define CHECK_GT(l, r, ...)          \
+    INTERNAL_CHECK_IMPL(((l) > (r)), \
+                        fmt::format("expect lhs:{} > rhs:{}", l, r))
+#define CHECK_GE(l, r, ...)           \
+    INTERNAL_CHECK_IMPL(((l) >= (r)), \
+                        fmt::format("expect lhs:{} >= rhs:{}", l, r))
+#define CHECK_EQ(l, r, ...)           \
+    INTERNAL_CHECK_IMPL(((l) == (r)), \
+                        fmt::format("expect lhs:{} == rhs:{}", l, r))
+
+#define be_unreachable(...) INTERNAL_CHECK_IMPL(false, __VA_ARGS__)
