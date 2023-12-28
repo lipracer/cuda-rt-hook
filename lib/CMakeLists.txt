@@ -39,6 +39,7 @@ add_library(plthook STATIC
 target_compile_definitions(plthook
     PRIVATE FMT_HEADER_ONLY
 )
+target_include_directories(plthook PUBLIC ${Python_INCLUDE_DIRS})
 
 target_link_libraries(plthook PRIVATE pthread dl)
 

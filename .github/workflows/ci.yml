@@ -16,8 +16,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v2
 
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+
     - name: Set up CMake
-      run: sudo apt-get install -y cmake
+      run: |
+        sudo apt-get install -y cmake
+        pip install pytest
 
     - name: Build project
       run: |
@@ -26,11 +33,16 @@ jobs:
         cd build
         cmake ..
         make
+        cd ..
+        pip wheel .
+        pip install --force-reinstall *.whl
 
     - name: Run tests
       run: |
         cd build
         ctest -R
+        cd ../
+        # pytest test
 
     - name: Upload test results
       uses: actions/upload-artifact@v2

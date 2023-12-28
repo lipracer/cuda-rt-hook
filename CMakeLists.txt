@@ -11,7 +11,9 @@ endif()
 add_compile_options(-Wall -Wextra -Wno-unused-parameter 
 -Wno-unused-function -Wno-unused-result -Wno-missing-field-initializers 
 -Wno-unknown-pragmas -Wno-type-limits -Wno-array-bounds -Wno-unknown-pragmas 
--Wno-strict-overflow -Wno-strict-aliasing -Wno-missing-braces -Wno-uninitialized)
+-Wno-strict-overflow -Wno-strict-aliasing -Wno-missing-braces -Wno-uninitialized
+-Werror=return-type -Werror)
+
 
 if (NOT SKBUILD)
   message(WARNING "\
@@ -70,7 +72,7 @@ install(TARGETS cuda_mock_impl LIBRARY DESTINATION cuda_mock)
 enable_testing()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest)
 
-file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp")
+file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/**/*.cpp")
 add_executable(UnitTest ${TEST_SOURCES})
 target_link_libraries(UnitTest gtest gtest_main logger plthook)
 add_test(NAME UnitTest COMMAND UnitTest)

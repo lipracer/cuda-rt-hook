@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <numeric>
 
+#include "GlobalVarMgr.h"
 #include "gtest/gtest.h"
 #include "hook.h"
 #include "logger/logger_stl.h"
@@ -38,6 +39,28 @@ TEST(TestHook, install) {
         auto installer = std::make_shared<InstallBuilder>();
         installer->install();
         (void)malloc(16);
+    }
+    gHook = false;
+    (void)malloc(16);
+}
+
+struct InstallPreDefine : public HookInstallerWrap<InstallPreDefine> {
+    bool targetLib(const char* name) { return !strlen(name); }
+    void* org_func;
+    std::tuple<const char*, void*, void**> symbols[1] = {
+        {"malloc", reinterpret_cast<void*>(&my_malloc), &org_func}};
+
+    void onSuccess() {}
+};
+
+TEST(TestHookPreDefine, install) {
+    gHook = true;
+    (void)malloc(16);
+    {
+        auto installer = std::make_shared<InstallPreDefine>();
+        installer->install();
+        (void)malloc(16);
+        EXPECT_TRUE(installer->org_func);
     }
     gHook = false;
     (void)malloc(16);

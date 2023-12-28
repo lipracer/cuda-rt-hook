@@ -16,10 +16,13 @@ GCC_CXX_COMPILER = "g++"
 CLANG_CXX_COMPILER = "clang++"
 
 class DynamicObj:
-    def __init__(self, file):
-        with open(file, "rt") as f:
-            lines = f.readlines()
-            self.code = ''.join(lines)
+    def __init__(self, file, is_str = False):
+        if not is_str:
+            with open(file, "rt") as f:
+                lines = f.readlines()
+                self.code = ''.join(lines)
+        else:
+            self.code = file
         self.compile_opts = []
     def compile(self):
         if not self.check_env():
