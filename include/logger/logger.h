@@ -66,7 +66,9 @@ struct LogConfig {
         kSync,
         kAsync,
     };
-    size_t pageSize{4 * 1024};
+    // NB: some time log string over 4K
+    // TODO: need check too long string
+    size_t pageSize{4 * 1024 * 1024};
     LoggerMode mode{kAsync};
     std::FILE* stream{stdout};
 };

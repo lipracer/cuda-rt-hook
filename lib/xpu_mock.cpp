@@ -25,20 +25,21 @@ static constexpr int kMaxXpuDeviceNum = 8;
 
 class XpuRuntimeWrapApi {
    public:
-
     static XpuRuntimeWrapApi& instance();
     XpuRuntimeWrapApi();
     static int xpuMalloc(void** pDevPtr, uint64_t size, int kind);
     static int xpuFree(void* devPtr);
     static int xpuWait(void* devStream);
     static int xpuMemcpy(void* dst, const void* src, uint64_t size, int kind);
+    static int xpuSetDevice(int devId);
 
    private:
-    std::function<int(void**, uint64_t, int)> raw_xpu_malloc_;
-    std::function<int(void*)> raw_xpu_free_;
-    std::function<int(int*)> raw_xpu_current_device_;
-    std::function<int(void*)> raw_xpu_wait_;
-    std::function<int(void*, const void*, uint64_t, int)> raw_xpu_memcpy_;
+    int (*raw_xpu_malloc_)(void**, uint64_t, int){nullptr};
+    int (*raw_xpu_free_)(void*){nullptr};
+    int (*raw_xpu_current_device_)(int*){nullptr};
+    int (*raw_xpu_wait_)(void*){nullptr};
+    int (*raw_xpu_memcpy_)(void*, const void*, uint64_t, int){nullptr};
+    decltype(&xpuSetDevice) raw_xpu_set_device_id_{nullptr};
 
     enum class XpuMemKind { GLOBAL_MEMORY = 0, L3_MEMORY };
 
@@ -178,29 +179,35 @@ int XpuRuntimeWrapApi::xpuWait(void* devStream) {
     constexpr int kMaxStackDeep = 512;
     void* call_stack[kMaxStackDeep] = {0};
     char** symbols = nullptr;
-    int num = backtrace(call_stack, kMaxStackDeep);
-    CHECK(num > 0, "Expect frams num {} > 0!", num);
-    CHECK(num <= kMaxStackDeep, "Expect frams num {} <= 512!", num);
-    symbols = backtrace_symbols(call_stack, num);
-    if (symbols == nullptr) {
-        return false;
-    }
-
-    LOG(WARN) << "[XpuRuntimeWrapApi xpuWait]"
-              << "get stack deep num:" << num;
-    Dl_info info;
-    for (int j = 0; j < num; j++) {
-        if (dladdr(call_stack[j], &info) && info.dli_sname) {
-            auto demangled = __support__demangle(info.dli_sname);
-            std::string path(info.dli_fname);
-            LOG(WARN) << "    frame " << j << path << ":" << demangled;
-        } else {
-            // filtering useless print
-            // LOG(WARN) << "    frame " << j << call_stack[j];
+    bool backtrace_ret = true;
+    do {
+        int num = backtrace(call_stack, kMaxStackDeep);
+        CHECK(num > 0, "Expect frams num {} > 0!", num);
+        CHECK(num <= kMaxStackDeep, "Expect frams num {} <= 512!", num);
+        symbols = backtrace_symbols(call_stack, num);
+        if (symbols == nullptr) {
+            backtrace_ret = false;
+            break;
         }
-    }
-    free(symbols);
 
+        LOG(WARN) << "[XpuRuntimeWrapApi xpuWait]"
+                  << "get stack deep num:" << num;
+        Dl_info info;
+        for (int j = 0; j < num; j++) {
+            if (dladdr(call_stack[j], &info) && info.dli_sname) {
+                auto demangled = __support__demangle(info.dli_sname);
+                std::string path(info.dli_fname);
+                LOG(WARN) << "    frame " << j << path << ":" << demangled;
+            } else {
+                // filtering useless print
+                // LOG(WARN) << "    frame " << j << call_stack[j];
+            }
+        }
+        free(symbols);
+    } while (0);
+    if (!backtrace_ret) {
+        LOG(WARN) << "collect native backtrace fail!";
+    }
     return XpuRuntimeWrapApi::instance().raw_xpu_wait_(devStream);
 }
 
@@ -239,66 +246,47 @@ int XpuRuntimeWrapApi::xpuMemcpy(void* dst, const void* src, uint64_t size,
     return XpuRuntimeWrapApi::instance().raw_xpu_memcpy_(dst, src, size, kind);
 }
 
+int XpuRuntimeWrapApi::xpuSetDevice(int devId) {
+    trace::CallFrames callFrames;
+    callFrames.CollectNative();
+    callFrames.CollectPython();
+    LOG(WARN) << __func__ << " with frame:\n" << callFrames;
+    return XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_(devId);
+}
+
 struct XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
     bool targetLib(const char* name) {
         return !strstr(name, "libxpurt.so.1") && !strstr(name, "libxpurt.so");
     }
 
-    bool targetSym(const char* name) {
-        return strstr(name, "xpu_malloc") || strstr(name, "xpu_free") ||
-               strstr(name, "xpu_current_device") || strstr(name, "xpu_wait") ||
-               strstr(name, "xpu_memcpy");
-    }
-
-    void* newFuncPtr(const hook::OriginalInfo& info) {
-        if (strstr(curSymName(), "xpu_malloc")) {
-            LOG(WARN) << "[XpuRuntimeApiHook][xpu_malloc]:" << info.libName;
-            if (!XpuRuntimeWrapApi::instance().raw_xpu_malloc_) {
-                XpuRuntimeWrapApi::instance().raw_xpu_malloc_ =
-                    std::bind(reinterpret_cast<int((*)(...))>(info.oldFuncPtr),
-                              std::placeholders::_1, std::placeholders::_2,
-                              std::placeholders::_3);
-            }
-            return reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuMalloc);
-        } else if (strstr(curSymName(), "xpu_free")) {
-            LOG(WARN) << "[XpuRuntimeApiHook][xpu_free]:" << info.libName;
-            if (!XpuRuntimeWrapApi::instance().raw_xpu_free_) {
-                XpuRuntimeWrapApi::instance().raw_xpu_free_ =
-                    std::bind(reinterpret_cast<int((*)(...))>(info.oldFuncPtr),
-                              std::placeholders::_1);
-            }
-            return reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuFree);
-        } else if (strstr(curSymName(), "xpu_current_device")) {
-            LOG(WARN) << "[XpuRuntimeApiHook][xpu_current_device]:"
-                      << info.libName;
-            if (!XpuRuntimeWrapApi::instance().raw_xpu_current_device_) {
-                XpuRuntimeWrapApi::instance().raw_xpu_current_device_ =
-                    std::bind(reinterpret_cast<int((*)(...))>(info.oldFuncPtr),
-                              std::placeholders::_1);
-            }
-            // simply use the original function ptr
-            return info.oldFuncPtr;
-        } else if (strstr(curSymName(), "xpu_wait")) {
-            LOG(WARN) << "[XpuRuntimeApiHook][xpu_wait]:" << info.libName;
-            if (!XpuRuntimeWrapApi::instance().raw_xpu_wait_) {
-                XpuRuntimeWrapApi::instance().raw_xpu_wait_ =
-                    std::bind(reinterpret_cast<int((*)(...))>(info.oldFuncPtr),
-                              std::placeholders::_1);
-            }
-            return reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuWait);
-        } else if (strstr(curSymName(), "xpu_memcpy")) {
-            LOG(WARN) << "[XpuRuntimeApiHook][xpu_memcpy]:" << info.libName;
-            if (!XpuRuntimeWrapApi::instance().raw_xpu_memcpy_) {
-                XpuRuntimeWrapApi::instance().raw_xpu_memcpy_ =
-                    std::bind(reinterpret_cast<int((*)(...))>(info.oldFuncPtr),
-                              std::placeholders::_1, std::placeholders::_2,
-                              std::placeholders::_3, std::placeholders::_4);
-            }
-            return reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuMemcpy);
-        }
-        CHECK(0, "capture wrong function: {}", curSymName());
-        return nullptr;
-    }
+    std::tuple<const char*, void*, void**> symbols[6] = {
+        // malloc
+        {"xpu_malloc", reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuMalloc),
+         reinterpret_cast<void**>(
+             &XpuRuntimeWrapApi::instance().raw_xpu_malloc_)},
+        // free
+        {"xpu_free", reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuFree),
+         reinterpret_cast<void**>(
+             &XpuRuntimeWrapApi::instance().raw_xpu_free_)},
+        // get device id
+        {"xpu_current_device",
+         reinterpret_cast<void*>(
+             XpuRuntimeWrapApi::instance().raw_xpu_current_device_),
+         reinterpret_cast<void**>(
+             &XpuRuntimeWrapApi::instance().raw_xpu_current_device_)},
+        // sync device
+        {"xpu_wait", reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuWait),
+         reinterpret_cast<void**>(
+             &XpuRuntimeWrapApi::instance().raw_xpu_wait_)},
+        // memcpy
+        {"xpu_memcpy", reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuMemcpy),
+         reinterpret_cast<void**>(
+             &XpuRuntimeWrapApi::instance().raw_xpu_memcpy_)},
+        // set_device
+        {"xpu_set_device",
+         reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuSetDevice),
+         reinterpret_cast<void**>(
+             &XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_)}};
 
     void onSuccess() {}
 };

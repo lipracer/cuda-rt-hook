@@ -2,3 +2,4 @@ build/**
 *.whl
 .vscode/**
 dist/**
+**/__pycache__/**

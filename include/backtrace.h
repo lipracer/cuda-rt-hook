@@ -1,18 +1,35 @@
 #pragma once
 
 #include <functional>
+#include <iosfwd>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace trace {
 
+class CallFrames {
+   public:
+    static constexpr size_t kMaxStackDeep = 1024;
+
+    CallFrames() = default;
+
+    bool CollectNative();
+    bool CollectPython();
+
+    friend std::ostream& operator<<(std::ostream& os, const CallFrames& frames);
+
+   private:
+    std::vector<void*> buffers_;
+    std::vector<std::string> native_frames_;
+    std::vector<std::string> python_frames_;
+};
+
 class BackTraceCollection {
    public:
     class CallStackInfo {
        public:
-        static constexpr size_t kMaxStackDeep = 256;
-
+        static constexpr size_t kMaxStackDeep = 1024;
         explicit CallStackInfo(
             const std::function<const void*(const std::string&)>& getBaseAddr)
             : getBaseAddr_(getBaseAddr) {

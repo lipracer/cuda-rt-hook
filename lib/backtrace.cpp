@@ -1,9 +1,11 @@
 #include "backtrace.h"
 
+#include <Python.h>
 #include <dlfcn.h>
 #include <elf.h>
 #include <errno.h>
 #include <execinfo.h>
+#include <frameobject.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -11,8 +13,76 @@
 #include <regex>
 
 #include "logger/logger.h"
+#include "support.h"
 
 namespace trace {
+
+bool CallFrames::CollectNative() {
+    buffers_.clear();
+    buffers_.resize(kMaxStackDeep, nullptr);
+    native_frames_.reserve(kMaxStackDeep);
+    char** symbols = nullptr;
+    int num = backtrace(buffers_.data(), kMaxStackDeep);
+    CHECK(num > 0, "Expect frams num {} > 0!", num);
+    symbols = backtrace_symbols(buffers_.data(), num);
+    if (symbols == nullptr) {
+        return false;
+    }
+    Dl_info info;
+    for (int j = 0; j < num; j++) {
+        if (dladdr(buffers_[j], &info) && info.dli_sname) {
+            auto demangled = __support__demangle(info.dli_sname);
+            std::string path(info.dli_fname);
+            std::stringstream ss;
+            ss << "    frame " << j << path << ":" << demangled;
+            native_frames_.push_back(ss.str());
+        } else {
+            // filtering useless print
+            // LOG(WARN) << "    frame " << j << buffers_[j];
+        }
+    }
+    free(symbols);
+    return true;
+}
+
+bool CallFrames::CollectPython() {
+    python_frames_.reserve(kMaxStackDeep);
+    // Acquire the Global Interpreter Lock (GIL) before calling Python C API
+    // functions from non-Python threads.
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    // https://stackoverflow.com/questions/1796510/accessing-a-python-traceback-from-the-c-api
+    PyThreadState* tstate = PyThreadState_GET();
+    if (NULL != tstate && NULL != tstate->frame) {
+        PyFrameObject* frame = tstate->frame;
+
+        while (NULL != frame) {
+            // int line = frame->f_lineno;
+            /*
+            frame->f_lineno will not always return the correct line number
+            you need to call PyCode_Addr2Line().
+            */
+            int line = PyCode_Addr2Line(frame->f_code, frame->f_lasti);
+            const char* filename = PyUnicode_AsUTF8(frame->f_code->co_filename);
+            const char* funcname = PyUnicode_AsUTF8(frame->f_code->co_name);
+            std::stringstream ss;
+            ss << "    " << filename << "(" << line << "): " << funcname;
+            python_frames_.push_back(ss.str());
+            frame = frame->f_back;
+        }
+    }
+    PyGILState_Release(gstate);
+    return !python_frames_.empty();
+}
+
+std::ostream& operator<<(std::ostream& os, const CallFrames& frames) {
+    for (const auto& f : frames.python_frames_) {
+        os << f << "\n";
+    }
+    for (const auto& f : frames.native_frames_) {
+        os << f << "\n";
+    }
+    return os;
+}
 
 bool BackTraceCollection::CallStackInfo::snapshot() {
     void* buffer[kMaxStackDeep] = {0};
@@ -171,7 +241,7 @@ bool BackTraceCollection::CallStackInfo::parse() {
     // backtrace format lib_name(symbol_name(+add)?) [address]
     std::vector<std::string> tmp_backtrace;
     tmp_backtrace.reserve(backtrace_.size());
-#define push_and_continue()         \
+#define push_and_continue()        \
     tmp_backtrace.push_back(line); \
     continue;
 
@@ -330,7 +400,7 @@ void BackTraceCollection::dump() {
         LOG(WARN) << "ignore:[call " << std::get<1>(stack_info) << " times"
                   << "]\n";
         LOG(WARN) << std::get<0>(stack_info);
-        if  (!std::get<0>(stack_info).parse()) {
+        if (!std::get<0>(stack_info).parse()) {
             LOG(WARN) << "parse fail!";
         }
         LOG(WARN) << "=========================parsed backtrace "
