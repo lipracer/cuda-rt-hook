@@ -32,6 +32,7 @@ class XpuRuntimeWrapApi {
     static int xpuWait(void* devStream);
     static int xpuMemcpy(void* dst, const void* src, uint64_t size, int kind);
     static int xpuSetDevice(int devId);
+    static int xpuCurrentDeviceId(int* devIdPtr);
 
    private:
     int (*raw_xpu_malloc_)(void**, uint64_t, int){nullptr};
@@ -254,6 +255,10 @@ int XpuRuntimeWrapApi::xpuSetDevice(int devId) {
     return XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_(devId);
 }
 
+int XpuRuntimeWrapApi::xpuCurrentDeviceId(int* devIdPtr) {
+    return XpuRuntimeWrapApi::instance().raw_xpu_current_device_(devIdPtr);
+}
+
 struct XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
     bool targetLib(const char* name) {
         return !strstr(name, "libxpurt.so.1") && !strstr(name, "libxpurt.so");
@@ -271,7 +276,7 @@ struct XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
         // get device id
         {"xpu_current_device",
          reinterpret_cast<void*>(
-             XpuRuntimeWrapApi::instance().raw_xpu_current_device_),
+             XpuRuntimeWrapApi::instance().xpuCurrentDeviceId),
          reinterpret_cast<void**>(
              &XpuRuntimeWrapApi::instance().raw_xpu_current_device_)},
         // sync device
@@ -288,7 +293,7 @@ struct XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
          reinterpret_cast<void**>(
              &XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_)}};
 
-    void onSuccess() {}
+    void onSuccess() { LOG(WARN) << "install " << curSymName() << " success"; }
 };
 
 }  // namespace
@@ -298,5 +303,6 @@ extern "C" {
 void xpu_dh_initialize() {
     static auto install_wrap = std::make_shared<XpuRuntimeApiHook>();
     install_wrap->install();
+    LOG(INFO) << "xpu_dh_initialize complete!";
 }
 }

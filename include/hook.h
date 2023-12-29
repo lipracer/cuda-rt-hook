@@ -74,6 +74,8 @@ struct MemberDetector<DerivedT,
                 return !strcmp(static_cast<DerivedT*>(self)->curSymName(),
                                std::get<0>(sym));
             });
+        // TODO: if std::get<2>(*iter) is a pointer and it's point to
+        // std::get<1>(*iter) then there will return nullptr
         *std::get<2>(*iter) = info.oldFuncPtr;
         return std::get<1>(*iter);
     }
