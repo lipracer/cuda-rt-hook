@@ -177,73 +177,13 @@ int XpuRuntimeWrapApi::xpuFree(void* devPtr) {
 }
 
 int XpuRuntimeWrapApi::xpuWait(void* devStream) {
-    constexpr int kMaxStackDeep = 512;
-    void* call_stack[kMaxStackDeep] = {0};
-    char** symbols = nullptr;
-    bool backtrace_ret = true;
-    do {
-        int num = backtrace(call_stack, kMaxStackDeep);
-        CHECK(num > 0, "Expect frams num {} > 0!", num);
-        CHECK(num <= kMaxStackDeep, "Expect frams num {} <= 512!", num);
-        symbols = backtrace_symbols(call_stack, num);
-        if (symbols == nullptr) {
-            backtrace_ret = false;
-            break;
-        }
-
-        LOG(WARN) << "[XpuRuntimeWrapApi xpuWait]"
-                  << "get stack deep num:" << num;
-        Dl_info info;
-        for (int j = 0; j < num; j++) {
-            if (dladdr(call_stack[j], &info) && info.dli_sname) {
-                auto demangled = __support__demangle(info.dli_sname);
-                std::string path(info.dli_fname);
-                LOG(WARN) << "    frame " << j << path << ":" << demangled;
-            } else {
-                // filtering useless print
-                // LOG(WARN) << "    frame " << j << call_stack[j];
-            }
-        }
-        free(symbols);
-    } while (0);
-    if (!backtrace_ret) {
-        LOG(WARN) << "collect native backtrace fail!";
-    }
+    IF_ENABLE_LOG_TRACE(__func__);
     return XpuRuntimeWrapApi::instance().raw_xpu_wait_(devStream);
 }
 
 int XpuRuntimeWrapApi::xpuMemcpy(void* dst, const void* src, uint64_t size,
                                  int kind) {
-    LOG(WARN) << "[XpuRuntimeWrapApi xpuMemcpy]"
-              << "entering PyGILState_Ensure";
-
-    // Acquire the Global Interpreter Lock (GIL) before calling Python C API
-    // functions from non-Python threads.
-    PyGILState_STATE gstate = PyGILState_Ensure();
-
-    LOG(WARN) << "[XpuRuntimeWrapApi xpuMemcpy]"
-              << "after PyGILState_Ensure";
-    LOG(WARN) << "[XpuRuntimeWrapApi xpuMemcpy]"
-              << "Python stack trace:";
-    // https://stackoverflow.com/questions/1796510/accessing-a-python-traceback-from-the-c-api
-    PyThreadState* tstate = PyThreadState_GET();
-    if (NULL != tstate && NULL != tstate->frame) {
-        PyFrameObject* frame = tstate->frame;
-
-        while (NULL != frame) {
-            // int line = frame->f_lineno;
-            /*
-            frame->f_lineno will not always return the correct line number
-            you need to call PyCode_Addr2Line().
-            */
-            int line = PyCode_Addr2Line(frame->f_code, frame->f_lasti);
-            const char* filename = PyUnicode_AsUTF8(frame->f_code->co_filename);
-            const char* funcname = PyUnicode_AsUTF8(frame->f_code->co_name);
-            LOG(WARN) << "    " << filename << "(" << line << "): " << funcname;
-            frame = frame->f_back;
-        }
-    }
-    PyGILState_Release(gstate);
+    IF_ENABLE_LOG_TRACE(__func__);
     return XpuRuntimeWrapApi::instance().raw_xpu_memcpy_(dst, src, size, kind);
 }
 
