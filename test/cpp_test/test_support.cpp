@@ -168,12 +168,12 @@ TEST(SupportTest, functor_ctor) {
 }
 
 template <typename T = int>
-static auto scalar_add(T a, T b) {
+static T scalar_add(T a, T b) {
     return a + b;
 }
 
 template <typename T = int>
-static auto scalar_sub(T a, T b) {
+static T scalar_sub(T a, T b) {
     return a - b;
 }
 
@@ -198,7 +198,7 @@ TEST(SupportTest, functor_member_func) {
     functor.capture(0, vec_int);
     functor.capture(1, vec_int);
 
-    OpFunctor functor_s(scalar_add<>);
+    OpFunctor functor_s(&scalar_add<int>);
     functor_s.capture(0, functor.getResult(), &VecInt::operator[], size_t(2));
     functor_s.capture(1, 2);
 
@@ -215,7 +215,7 @@ TEST(SupportTest, functor_member_func_direct_capture) {
     functor.capture(0, vec_int);
     functor.capture(1, vec_int);
 
-    OpFunctor functor_s(scalar_add<>);
+    OpFunctor functor_s(&scalar_add<int>);
     functor_s.capture(0, functor.getResult(), &VecInt::operator[], size_t(2));
     functor_s.capture(1, 2);
 
@@ -225,7 +225,7 @@ TEST(SupportTest, functor_member_func_direct_capture) {
 }
 
 TEST(SupportTest, functor_member_func_partial_arg) {
-    OpFunctor functor(scalar_add<>);
+    OpFunctor functor(&scalar_add<int>);
     functor.capture(0, 1);
     functor(2);
     EXPECT_EQ(functor.getResultValue<int>(), 3);
@@ -234,11 +234,11 @@ TEST(SupportTest, functor_member_func_partial_arg) {
 TEST(SupportTest, opfunctor_scalar) {
     int a = 1, b = 2;
 
-    OpFunctor functor0(&scalar_add<>);
+    OpFunctor functor0(&scalar_add<int>);
     functor0.capture(0, a);
     functor0.capture(1, b);
 
-    OpFunctor functor1(&scalar_sub<>);
+    OpFunctor functor1(&scalar_sub<int>);
     functor1.capture(0, functor0.getResult());
     functor1.capture(1, a);
 
