@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <numeric>
 
+#include "env_util.h"
 #include "gtest/gtest.h"
 #include "logger/logger_stl.h"
 #include "support.h"
@@ -622,4 +623,27 @@ TEST(SupportTest, opfunctor_tensor_perf_single) {
     EXPECT_TRUE(std::equal(tensor.element_begin<float>(),
                            tensor.element_end<float>(),
                            lambda_result.element_begin<float>(), float_eq));
+}
+
+TEST(EnvUtil, env_util) {
+    setenv("xpuWait", "0", 1);
+    int intv = hook::get_env_value<int>("xpuWait");
+    EXPECT_EQ(intv, 0);
+
+    setenv("hook_ctr", "xpuWait=0", 1);
+    std::pair<std::string, int> pairv =
+        hook::get_env_value<std::pair<std::string, int>>("hook_ctr");
+    EXPECT_EQ(pairv.first, "xpuWait");
+    EXPECT_EQ(pairv.second, 0);
+
+    setenv("hook_ctr", "xpuWait=0,xpuSetDiviceId=1", 1);
+    std::vector<std::pair<std::string, int>> vec =
+        hook::get_env_value<std::vector<std::pair<std::string, int>>>(
+            "hook_ctr");
+
+    EXPECT_EQ(vec[0].first, "xpuWait");
+    EXPECT_EQ(vec[0].second, 0);
+
+    EXPECT_EQ(vec[1].first, "xpuSetDiviceId");
+    EXPECT_EQ(vec[1].second, 1);
 }

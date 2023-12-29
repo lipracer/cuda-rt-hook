@@ -2,7 +2,7 @@ import os
 import cuda_mock
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-xpu_lib = cuda_mock.DynamicObj(f'{script_dir}/xpu_libs.cxx').appen_compile_opts('-lpthread').compile().get_lib()
+xpu_lib = cuda_mock.DynamicObj(f'{script_dir}/xpu_libs.cxx').appen_compile_opts('-g -lpthread').compile().get_lib()
 new_name = xpu_lib.split('/')
 new_name[-1] = 'libxpurt.so'
 new_name = '/'.join(new_name)
@@ -53,7 +53,7 @@ EXPORT void call_xpu_set_device(){
 
 '''
 
-dummy_lib = cuda_mock.DynamicObj(cpp_code, True).appen_compile_opts('-lxpurt', '-L/tmp', '-Wl,-rpath,/tmp').compile().get_lib()
+dummy_lib = cuda_mock.DynamicObj(cpp_code, True).appen_compile_opts('-g -lxpurt', '-L/tmp', '-Wl,-rpath,/tmp').compile().get_lib()
 from cuda_mock import *
 import ctypes
 
@@ -64,7 +64,7 @@ def test_hook_xpu_functions():
     cuda_mock.xpu_initialize()
 
     # first call
-    dummy_lib.xpu_current_device()
+    dummy_lib.call_xpu_current_device()
     dummy_lib.call_xpu_malloc()
     dummy_lib.call_xpu_free()
     dummy_lib.call_xpu_wait()

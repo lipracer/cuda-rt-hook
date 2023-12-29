@@ -42,7 +42,7 @@ jobs:
         cd build
         ctest -R
         cd ../
-        # pytest test
+        pytest test
 
     - name: Upload test results
       uses: actions/upload-artifact@v2

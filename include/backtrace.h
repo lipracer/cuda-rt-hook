@@ -1,10 +1,34 @@
 #pragma once
 
+#include <algorithm>
 #include <functional>
 #include <iosfwd>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "env_util.h"
+
+static bool disable_log_backtrace(const char* func) {
+    auto ctrl = hook::get_env_value<std::vector<std::pair<std::string, int>>>(
+        "HOOK_DISABLE_TRACE");
+    auto iter = std::find_if(ctrl.begin(), ctrl.end(),
+                             [&](auto& pair) { return pair.first == func; });
+    if (iter != ctrl.end()) {
+        return iter->second;
+    }
+    return false;
+}
+
+#define IF_ENABLE_LOG_TRACE(func)                                    \
+    do {                                                             \
+        if (!disable_log_backtrace(func)) {                          \
+            trace::CallFrames callFrames;                            \
+            callFrames.CollectNative();                              \
+            callFrames.CollectPython();                              \
+            LOG(WARN) << __func__ << " with frame:\n" << callFrames; \
+        }                                                            \
+    } while (0)
 
 namespace trace {
 
