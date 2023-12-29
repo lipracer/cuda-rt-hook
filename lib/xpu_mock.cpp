@@ -248,10 +248,7 @@ int XpuRuntimeWrapApi::xpuMemcpy(void* dst, const void* src, uint64_t size,
 }
 
 int XpuRuntimeWrapApi::xpuSetDevice(int devId) {
-    trace::CallFrames callFrames;
-    callFrames.CollectNative();
-    callFrames.CollectPython();
-    LOG(WARN) << __func__ << " with frame:\n" << callFrames;
+    IF_ENABLE_LOG_TRACE(__func__);
     return XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_(devId);
 }
 

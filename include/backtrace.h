@@ -6,6 +6,20 @@
 #include <unordered_map>
 #include <vector>
 
+#include "env_util.h"
+
+#define IF_ENABLE_LOG_TRACE(func)                                     \
+    do {                                                              \
+        auto ctrl = hook::get_env_value<std::pair<std::string, int>>( \
+            "HOOK_DISABLE_TRACE");                                    \
+        if (!(ctrl.first == func && ctrl.second)) {                   \
+            trace::CallFrames callFrames;                             \
+            callFrames.CollectNative();                               \
+            callFrames.CollectPython();                               \
+            LOG(WARN) << __func__ << " with frame:\n" << callFrames;  \
+        }                                                             \
+    } while (0)
+
 namespace trace {
 
 class CallFrames {
