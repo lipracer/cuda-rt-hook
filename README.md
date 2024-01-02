@@ -42,10 +42,14 @@
 - 注意要在`import torch`/`import paddle`之后`import cuda_mock; cuda_mock.xpu_initialize()`
 - 使用方法:
 
-```python
-import paddle
-import cuda_mock; cuda_mock.xpu_initialize() # 加入这一行
-```
+    ```python
+    import paddle
+    import cuda_mock; cuda_mock.xpu_initialize() # 加入这一行
+    ```
+- 关闭打印backtrace（获取backtrace性能下降比较严重）
+    ```
+    export HOOK_DISABLE_TRACE='xpuMemcpy=0,xpuSetDevice=0'
+    ```
 
 ### example
 `python test/test_import_mock.py`
