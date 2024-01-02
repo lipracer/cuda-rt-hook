@@ -46,9 +46,8 @@ TEST(TestHook, install) {
 
 struct InstallPreDefine : public HookInstallerWrap<InstallPreDefine> {
     bool targetLib(const char* name) { return !strlen(name); }
-    void* org_func;
-    std::tuple<const char*, void*, void**> symbols[1] = {
-        {"malloc", reinterpret_cast<void*>(&my_malloc), &org_func}};
+    hook::HookFeature symbols[1] = {
+        hook::HookFeature("malloc", &my_malloc, &libc_malloc)};
 
     void onSuccess() {}
 };
@@ -60,7 +59,7 @@ TEST(TestHookPreDefine, install) {
         auto installer = std::make_shared<InstallPreDefine>();
         installer->install();
         (void)malloc(16);
-        EXPECT_TRUE(installer->org_func);
+        EXPECT_TRUE(libc_malloc);
     }
     gHook = false;
     (void)malloc(16);

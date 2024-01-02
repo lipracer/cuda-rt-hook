@@ -201,34 +201,26 @@ struct XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
         return !strstr(name, "libxpurt.so.1") && !strstr(name, "libxpurt.so");
     }
 
-    std::tuple<const char*, void*, void**> symbols[6] = {
+    hook::HookFeature symbols[6] = {
         // malloc
-        {"xpu_malloc", reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuMalloc),
-         reinterpret_cast<void**>(
-             &XpuRuntimeWrapApi::instance().raw_xpu_malloc_)},
+        hook::HookFeature("xpu_malloc", &XpuRuntimeWrapApi::xpuMalloc,
+                    &XpuRuntimeWrapApi::instance().raw_xpu_malloc_),
         // free
-        {"xpu_free", reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuFree),
-         reinterpret_cast<void**>(
-             &XpuRuntimeWrapApi::instance().raw_xpu_free_)},
+        hook::HookFeature("xpu_free", &XpuRuntimeWrapApi::xpuFree,
+                    &XpuRuntimeWrapApi::instance().raw_xpu_free_),
         // get device id
-        {"xpu_current_device",
-         reinterpret_cast<void*>(
-             XpuRuntimeWrapApi::instance().xpuCurrentDeviceId),
-         reinterpret_cast<void**>(
-             &XpuRuntimeWrapApi::instance().raw_xpu_current_device_)},
+        hook::HookFeature("xpu_current_device",
+                    &XpuRuntimeWrapApi::instance().xpuCurrentDeviceId,
+                    &XpuRuntimeWrapApi::instance().raw_xpu_current_device_),
         // sync device
-        {"xpu_wait", reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuWait),
-         reinterpret_cast<void**>(
-             &XpuRuntimeWrapApi::instance().raw_xpu_wait_)},
+        hook::HookFeature("xpu_wait", &XpuRuntimeWrapApi::xpuWait,
+                    &XpuRuntimeWrapApi::instance().raw_xpu_wait_),
         // memcpy
-        {"xpu_memcpy", reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuMemcpy),
-         reinterpret_cast<void**>(
-             &XpuRuntimeWrapApi::instance().raw_xpu_memcpy_)},
+        hook::HookFeature("xpu_memcpy", &XpuRuntimeWrapApi::xpuMemcpy,
+                    &XpuRuntimeWrapApi::instance().raw_xpu_memcpy_),
         // set_device
-        {"xpu_set_device",
-         reinterpret_cast<void*>(&XpuRuntimeWrapApi::xpuSetDevice),
-         reinterpret_cast<void**>(
-             &XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_)}};
+        hook::HookFeature("xpu_set_device", &XpuRuntimeWrapApi::xpuSetDevice,
+                    &XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_)};
 
     void onSuccess() { LOG(WARN) << "install " << curSymName() << " success"; }
 };
