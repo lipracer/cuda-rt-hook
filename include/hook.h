@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <iosfwd>
 #include <map>
@@ -83,30 +84,67 @@ class HookRuntimeContext {
         }
     };
 
-    using map_type = std::map<StringPair, std::pair<void*, void*>>;
+    struct Statistic {
+        void increase() const { ++counter_; }
+        Statistic() = default;
+        Statistic(const Statistic& other) { counter_.store(other.counter_); }
+        Statistic(Statistic&& other) { counter_.store(other.counter_); }
+        Statistic& operator=(const Statistic& other) {
+            counter_.store(other.counter_);
+            return *this;
+        }
+        Statistic& operator=(Statistic&& other) {
+            counter_.store(other.counter_);
+            return *this;
+        }
+
+        friend std::ostream& operator<<(std::ostream& os, const Statistic& s) {
+            os << "total call:" << s.counter_ << " times";
+            return os;
+        }
+
+       private:
+        mutable std::atomic<size_t> counter_{0};
+    };
+
+    struct StatisticPair : public std::pair<void*, void*>, public Statistic {
+        using std::pair<void*, void*>::pair;
+        StatisticPair()
+            : std::pair<void*, void*>(nullptr, nullptr), Statistic() {}
+    };
+    using vec_type = std::vector<std::pair<StringPair, StatisticPair>>;
+    using map_type = std::map<StringPair, size_t>;
     //    using map_type = std::unordered_map<StringPair, std::pair<void*,
     //    void*>, SPhash>;
 
     HookRuntimeContext() = default;
+    ~HookRuntimeContext() { dump(); }
     static HookRuntimeContext& instance() {
         static HookRuntimeContext __instance;
         return __instance;
     }
 
     template <typename... Args>
-    auto insert(Args&&... args) {
-        return map_.insert(std::forward<Args>(args)...);
+    vec_type::iterator insert(
+        const std::pair<StringPair, StatisticPair>& feature) {
+        func_infos_.emplace_back(feature);
+        map_.insert(std::make_pair(feature.first, func_infos_.size() - 1));
+        return std::prev(func_infos_.end());
     }
-    map_type& map() { return map_; }
 
-    map_type::const_iterator& current_iter() {
-        thread_local static map_type::const_iterator iter;
+    size_t getUniqueId(vec_type::iterator iter) {
+        return std::distance(func_infos_.begin(), iter);
+    }
+
+    vec_type::const_iterator& current_iter() {
+        thread_local static vec_type::const_iterator iter;
         return iter;
     }
 
-    map_type::const_iterator setCurrentState(size_t UniqueId) {
-        current_iter() = map_.begin();
+    vec_type::const_iterator setCurrentState(size_t UniqueId) {
+        current_iter() = func_infos_.begin();
         std::advance(current_iter(), UniqueId);
+        current_iter()->second.increase();
         return current_iter();
     }
 
@@ -114,16 +152,19 @@ class HookRuntimeContext {
     const std::string& curSymName() { return current_iter()->first.sym_name; }
 
     void dump() {
-        LOG(WARN) << "dum context map:";
-        for (auto iter = map_.begin(); iter != map_.end(); ++iter) {
-            LOG(WARN) << "offset:" << std::distance(map_.begin(), iter)
-                      << " lib name:" << iter->first.lib_name
-                      << " sym name:" << iter->first.sym_name;
+        std::stringstream ss;
+        for (const auto& func_info : func_infos_) {
+            ss << " lib name:" << func_info.first.lib_name
+               << " sym name:" << func_info.first.sym_name
+               << " statistic info:\n"
+               << func_info.second << "\n";
         }
+        LOG(WARN) << "dum context map:\n" << ss.str();
     }
 
    private:
     map_type map_;
+    std::vector<std::pair<StringPair, StatisticPair>> func_infos_;
 };
 
 struct StringLiteral {
@@ -202,13 +243,9 @@ struct HookFeature {
     void* getNewFunc(const char* libName = nullptr) {
         if (libName) {
             HookRuntimeContext::StringPair pair_str(libName, symName);
-            auto iter =
-                HookRuntimeContext::instance()
-                    .insert(std::make_pair(
-                        pair_str, std::pair<void*, void*>(nullptr, nullptr)))
-                    .first;
-            auto uniqueId = std::distance(
-                HookRuntimeContext::instance().map().begin(), iter);
+            auto iter = HookRuntimeContext::instance().insert(
+                std::make_pair(pair_str, HookRuntimeContext::StatisticPair()));
+            auto uniqueId = HookRuntimeContext::instance().getUniqueId(iter);
             auto wrapFunc = findUniqueFunc(uniqueId);
             iter->second.first = wrapFunc;
             iter->second.second = newFunc;
