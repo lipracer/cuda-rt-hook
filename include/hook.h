@@ -99,14 +99,19 @@ class HookRuntimeContext {
     }
     map_type& map() { return map_; }
 
-    map_type::const_iterator setCurrentState(size_t UniqueId) {
-        cur_iter_ = map_.begin();
-        std::advance(cur_iter_, UniqueId);
-        return cur_iter_;
+    map_type::const_iterator& current_iter() {
+        thread_local static map_type::const_iterator iter;
+        return iter;
     }
 
-    const std::string& curLibName() { return cur_iter_->first.lib_name; }
-    const std::string& curSymName() { return cur_iter_->first.sym_name; }
+    map_type::const_iterator setCurrentState(size_t UniqueId) {
+        current_iter() = map_.begin();
+        std::advance(current_iter(), UniqueId);
+        return current_iter();
+    }
+
+    const std::string& curLibName() { return current_iter()->first.lib_name; }
+    const std::string& curSymName() { return current_iter()->first.sym_name; }
 
     void dump() {
         LOG(WARN) << "dum context map:";
@@ -119,7 +124,6 @@ class HookRuntimeContext {
 
    private:
     map_type map_;
-    map_type::const_iterator cur_iter_;
 };
 
 struct StringLiteral {
