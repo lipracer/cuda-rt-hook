@@ -1,6 +1,6 @@
 [project]
 name = "cuda-mock"
-version = "0.0.2"
+version = "0.0.3"
 description = "mock cuda runtime api"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -21,7 +21,7 @@ minimum-version = "0.4"
 build-dir = "build/{wheel_tag}"
 
 # Build stable ABI wheels for CPython 3.12+
-wheel.py-api = "cp312"
+# wheel.py-api = "cp312"
 
 
 [tool.cibuildwheel]
