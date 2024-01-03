@@ -65,9 +65,25 @@ def test_hook_xpu_functions():
 
     # first call
     dummy_lib.call_xpu_current_device()
+    
+    dummy_lib.call_xpu_malloc()
+    dummy_lib.call_xpu_memcpy()
+    dummy_lib.call_xpu_free()
+
+    dummy_lib.call_xpu_malloc()
+    dummy_lib.call_xpu_memcpy()
+    dummy_lib.call_xpu_free()
+
     dummy_lib.call_xpu_malloc()
     dummy_lib.call_xpu_free()
+
+    dummy_lib.call_xpu_malloc()
+    dummy_lib.call_xpu_free()
+    
     dummy_lib.call_xpu_wait()
+    dummy_lib.call_xpu_wait()
+    dummy_lib.call_xpu_wait()
+    dummy_lib.call_xpu_set_device()
     dummy_lib.call_xpu_set_device()
 
 if __name__ == '__main__':
