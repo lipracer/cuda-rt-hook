@@ -159,7 +159,7 @@ class HookRuntimeContext {
                << " statistic info:\n"
                << func_info.second << "\n";
         }
-        LOG(WARN) << "dum context map:\n" << ss.str();
+        LOG(WARN) << "dump context map:\n" << ss.str();
     }
 
    private:
