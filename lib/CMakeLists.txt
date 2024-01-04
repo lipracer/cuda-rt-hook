@@ -17,6 +17,7 @@ add_library(cuda_mock STATIC
     cuda_op_tracer.cpp 
     backtrace.cpp
     xpu_mock.cpp
+    statistic.cpp
 )
 
 
@@ -35,6 +36,7 @@ add_library(plthook STATIC
     hook.cpp 
     cuda_op_tracer.cpp 
     backtrace.cpp
+    statistic.cpp
 )
 target_compile_definitions(plthook
     PRIVATE FMT_HEADER_ONLY

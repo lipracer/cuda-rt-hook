@@ -98,10 +98,7 @@ class HookRuntimeContext {
             return *this;
         }
 
-        friend std::ostream& operator<<(std::ostream& os, const Statistic& s) {
-            os << "total call:" << s.counter_ << " times";
-            return os;
-        }
+        friend std::ostream& operator<<(std::ostream& os, const Statistic& s);
 
        private:
         mutable std::atomic<size_t> counter_{0};
@@ -151,16 +148,7 @@ class HookRuntimeContext {
     const std::string& curLibName() { return current_iter()->first.lib_name; }
     const std::string& curSymName() { return current_iter()->first.sym_name; }
 
-    void dump() {
-        std::stringstream ss;
-        for (const auto& func_info : func_infos_) {
-            ss << " lib name:" << func_info.first.lib_name
-               << " sym name:" << func_info.first.sym_name
-               << " statistic info:\n"
-               << func_info.second << "\n";
-        }
-        LOG(WARN) << "dump context map:\n" << ss.str();
-    }
+    void dump();
 
    private:
     map_type map_;
