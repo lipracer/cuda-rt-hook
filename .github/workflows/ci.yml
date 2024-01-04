@@ -25,10 +25,10 @@ jobs:
       run: |
         sudo apt-get install -y cmake
         pip install --upgrade pip
-        pip install -r requirements.txt
 
     - name: Build project
       run: |
+        pip install -r requirements.txt
         git submodule update --init --recursive
         git clean -xfd
         python setup.py sdist bdist_wheel
