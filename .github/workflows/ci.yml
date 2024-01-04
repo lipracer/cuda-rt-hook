@@ -23,17 +23,14 @@ jobs:
 
     - name: Set up CMake
       run: |
-        pip install --upgrade pip
         sudo apt-get install -y cmake
-        pip install wheel
-        pip install pytest
-        pip install ninja
+        pip install --upgrade pip
+        pip install -r requirements.txt
 
     - name: Build project
       run: |
         git submodule update --init --recursive
         git clean -xfd
-        ls .
         python setup.py sdist bdist_wheel
 
     - name: Run tests
