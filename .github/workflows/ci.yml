@@ -29,13 +29,8 @@ jobs:
     - name: Build project
       run: |
         git submodule update --init --recursive
-        mkdir build
-        cd build
-        cmake ..
-        make
-        cd ..
-        pip wheel .
-        pip install --force-reinstall *.whl
+        python setup.py sdist bdist_wheel
+        pip install --force-reinstall dist/*.whl
 
     - name: Run tests
       run: |

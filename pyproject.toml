@@ -39,3 +39,8 @@ MACOSX_DEPLOYMENT_TARGET = "10.14"
 [build-system]
 requires = ["setuptools>=42", "wheel", "scikit-build", "cmake>=3.17", "ninja"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# If there are data files included in your packages that need to be
+# installed, specify them here.
+package-data = {"cuda_mock" = ["*.so"]}

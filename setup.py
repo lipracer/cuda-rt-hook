@@ -1,11 +1,13 @@
 from setuptools import setup
-import os
+import os, sys
 
 def sync_shell(cmd):
     err = os.system(cmd)
     assert not err, f'exec cmmand:{cmd} fail!'
 
 sync_shell("rm -rf build")
-sync_shell("cmake -S . -B build -GNinja && cmake --build build")
-sync_shell("cd build/lib && ls | grep -v '\<cuda_mock\>' | xargs -I {} rm -rf {}")
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sync_shell(f"cmake -S {script_dir} -B build -GNinja && cmake --build build")
+sync_shell(r"cd build/lib && ls | grep -v '\<cuda_mock\>' | xargs -I {} rm -rf {}")
+
 setup()

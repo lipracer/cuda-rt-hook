@@ -5,10 +5,10 @@
 `git submodule update --init --recursive`
 
 - build wheel package  
-`pip wheel .`
+`python setup.py sdist bdist_wheel`
 
 - direct install  
-`pip install .`
+`pip install dist/*.whl`
 
 ### collect cuda operator call stack
 - find nvcc installed path  
