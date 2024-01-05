@@ -62,7 +62,7 @@ void MemoryStatistic::record_alloc(void* ptr, size_t size) {
 void MemoryStatistic::record_free(void* ptr) {
     auto iter = ptr_map_.find(MemoryStatistic::DevPtr(ptr, 0));
     if (iter == ptr_map_.end()) {
-        LOG(FATAL) << "free dangling pointer";
+        LOG(WARN) << "free dangling pointer";
         return;
     }
     total_size_ -= iter->size_;
@@ -102,7 +102,7 @@ void MemoryStatisticCollection::record_free(const std::string& libName,
                                             size_t devId, void* ptr) {
     auto iter = kind_map_.find(ptr);
     if (iter == kind_map_.end()) {
-        LOG(FATAL) << "free dangling pointer";
+        LOG(WARN) << "free dangling pointer";
     }
     record_free(libName, devId, ptr, iter->second);
 }
