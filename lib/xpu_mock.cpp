@@ -16,6 +16,7 @@
 #include "hook.h"
 #include "logger/logger.h"
 #include "support.h"
+#include "statistic.h"
 
 namespace {
 
@@ -106,29 +107,9 @@ int XpuRuntimeWrapApi::xpuMalloc(void** pDevPtr, uint64_t size, int kind) {
         return r;
     }
 
-    if (kind == (int)XpuMemKind::GLOBAL_MEMORY) {
-        XpuRuntimeWrapApi::instance().allocated_gm_size_[devId] += size;
-        XpuRuntimeWrapApi::instance().peak_gm_size_[devId] =
-            std::max(XpuRuntimeWrapApi::instance().peak_gm_size_[devId],
-                     XpuRuntimeWrapApi::instance().allocated_gm_size_[devId]);
-    } else if (kind == (int)XpuMemKind::L3_MEMORY) {
-        XpuRuntimeWrapApi::instance().allocated_l3_size_[devId] += size;
-        XpuRuntimeWrapApi::instance().peak_l3_size_[devId] =
-            std::max(XpuRuntimeWrapApi::instance().peak_l3_size_[devId],
-                     XpuRuntimeWrapApi::instance().allocated_l3_size_[devId]);
-    }
-
-    XpuRuntimeWrapApi::instance().allocated_ptr_map_[devId][*pDevPtr] = {
-        *pDevPtr, size, (XpuMemKind)kind};
-
-    LOG(WARN) << "[XpuRuntimeWrapApi xpuMalloc][success] "
-              << "devId=" << devId << ","
-              << "size=" << size << ","
-              << "kind=" << kind << ","
-              << "gm_allocated="
-              << XpuRuntimeWrapApi::instance().allocated_gm_size_[devId] << ","
-              << "gm_peak="
-              << XpuRuntimeWrapApi::instance().peak_gm_size_[devId];
+    hook::MemoryStatisticCollection::instance().record_alloc(
+        hook::HookRuntimeContext::instance().curLibName(), devId, *pDevPtr,
+        size, kind);
 
     return r;
 }
@@ -154,25 +135,14 @@ int XpuRuntimeWrapApi::xpuFree(void* devPtr) {
              kMaxXpuDeviceNum);
 
     r = XpuRuntimeWrapApi::instance().raw_xpu_free_(devPtr);
+
+    hook::MemoryStatisticCollection::instance().record_free(
+        hook::HookRuntimeContext::instance().curLibName(), devId, devPtr);
+
     if (r != 0) {
         return r;
     }
 
-    auto it =
-        XpuRuntimeWrapApi::instance().allocated_ptr_map_[devId].find(devPtr);
-    if (it == XpuRuntimeWrapApi::instance().allocated_ptr_map_[devId].end()) {
-        return r;
-    }
-
-    XpuDataPtr dataPtr = it->second;
-
-    if (dataPtr.kind == XpuMemKind::GLOBAL_MEMORY) {
-        XpuRuntimeWrapApi::instance().allocated_gm_size_[devId] -= dataPtr.size;
-    } else if (dataPtr.kind == XpuMemKind::L3_MEMORY) {
-        XpuRuntimeWrapApi::instance().allocated_l3_size_[devId] -= dataPtr.size;
-    }
-
-    XpuRuntimeWrapApi::instance().allocated_ptr_map_[devId].erase(it);
     return r;
 }
 
