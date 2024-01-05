@@ -1,0 +1,82 @@
+#pragma once
+
+#include <stddef.h>
+
+#include <iosfwd>
+#include <set>
+#include <unordered_map>
+#include <string>
+
+namespace hook {
+
+inline std::string alignWith(const std::string& str, size_t size = 32) {
+    size_t align_size = str.size() >= size ? 1 : size - str.size();
+    return std::string(align_size, ' ');
+};
+
+class MemoryStatistic {
+   public:
+    struct DevPtr {
+        size_t size_{0};
+        void* ptr_{nullptr};
+        DevPtr(void* ptr, size_t size) : size_(size), ptr_(ptr) {}
+        bool operator<(const DevPtr& other) const { return ptr_ < other.ptr_; }
+    };
+
+    void record_alloc(void* ptr, size_t size);
+    void record_free(void* ptr);
+
+    friend std::ostream& operator<<(std::ostream& os, const MemoryStatistic& s);
+
+   private:
+    std::string identity_;
+    size_t total_size_{0};
+    size_t peak_size_{0};
+    std::set<DevPtr> ptr_map_;
+};
+
+class MemoryStatisticCollection {
+   public:
+    struct PtrIdentity {
+        std::string lib;
+        size_t devId;
+        int kind;
+        PtrIdentity(std::string lib, size_t devId, int kind)
+            : lib(lib), devId(devId), kind(kind) {}
+        bool operator==(const PtrIdentity& other) const {
+            return lib == other.lib && devId == other.devId &&
+                   kind == other.kind;
+        }
+        friend std::ostream& operator<<(std::ostream& os, const PtrIdentity& id);
+    };
+    struct PtrIdentityHash {
+        size_t operator()(const PtrIdentity& id) const {
+            std::string ret;
+            ret += id.lib;
+            ret += std::to_string(id.kind);
+            ret += std::to_string(id.devId);
+            return std::hash<std::string>()(ret);
+        }
+    };
+
+    ~MemoryStatisticCollection();
+
+    void record_alloc(const std::string& libName, size_t devId, void* ptr,
+                      size_t size, int kind);
+    void record_free(const std::string& libName, size_t devId, void* ptr,
+                     int kind);
+
+    void record_free(const std::string& libName, size_t devId, void* ptr);
+
+    static MemoryStatisticCollection& instance();
+
+    friend std::ostream& operator<<(std::ostream& os,
+                                    const MemoryStatisticCollection& s);
+
+   private:
+    std::unordered_map<PtrIdentity, MemoryStatistic, PtrIdentityHash>
+        statistics_;
+    std::unordered_map<void*, int> kind_map_;
+};
+
+}  // namespace hook

@@ -30,7 +30,7 @@ EXPORT int xpu_set_device(int devId);
 void* devPtr = nullptr;
 
 EXPORT void call_xpu_malloc() {
-    xpu_malloc(&devPtr, 0, 0);
+    xpu_malloc(&devPtr, 16, 0);
 }
 EXPORT void call_xpu_free() {
     xpu_free(devPtr);
