@@ -76,7 +76,21 @@ class MemoryStatisticCollection {
    private:
     std::unordered_map<PtrIdentity, MemoryStatistic, PtrIdentityHash>
         statistics_;
-    std::unordered_map<void*, int> kind_map_;
+    struct KindDevPtr {
+        size_t devId;
+        void* ptr;
+        bool operator==(const KindDevPtr& other) const {
+            return devId == other.devId && ptr == other.ptr;
+        }
+    };
+    struct KindDevPtrHash {
+        size_t operator()(const KindDevPtr& other) const {
+            size_t value = other.devId << 16 |
+                           ((reinterpret_cast<size_t>(other.ptr) << 16) >> 16);
+            return std::hash<size_t>()(value);
+        }
+    };
+    std::unordered_map<KindDevPtr, int, KindDevPtrHash> kind_map_;
 };
 
 }  // namespace hook

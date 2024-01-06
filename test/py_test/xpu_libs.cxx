@@ -9,8 +9,8 @@
 
 extern "C" {
 
-EXPORT int xpu_malloc(void** devPtr, uint64_t, int) { 
-    *devPtr = malloc(16);
+EXPORT int xpu_malloc(void** devPtr, uint64_t size, int kind) { 
+    *devPtr = malloc(size);
     return SUCCESS; 
 }
 
@@ -19,8 +19,10 @@ EXPORT int xpu_free(void* ptr) {
     return SUCCESS;
 }
 
+thread_local int gDeviceId = 0;
+
 EXPORT int xpu_current_device(int* devId) {
-    *devId = 0;
+    *devId = gDeviceId;
     return SUCCESS;
 }
 
@@ -30,6 +32,8 @@ EXPORT int xpu_wait(void*) {
 
 EXPORT int xpu_memcpy(void*, const void*, uint64_t, int) { return SUCCESS; }
 
-EXPORT int xpu_set_device(int devId) { return SUCCESS; }
-
+EXPORT int xpu_set_device(int devId) {
+    gDeviceId = devId;
+    return SUCCESS;
+}
 }
