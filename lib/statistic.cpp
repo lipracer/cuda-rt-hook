@@ -78,7 +78,7 @@ std::ostream& operator<<(std::ostream& os, const MemoryStatistic& s) {
 }
 
 MemoryStatisticCollection::~MemoryStatisticCollection() {
-    LOG(WARN) << *this;
+    LOG(WARN) << "memory statistic info:\n" << *this;
 }
 
 MemoryStatisticCollection& MemoryStatisticCollection::instance() {
@@ -89,7 +89,8 @@ MemoryStatisticCollection& MemoryStatisticCollection::instance() {
 void MemoryStatisticCollection::record_alloc(const std::string& libName,
                                              size_t devId, void* ptr,
                                              size_t size, int kind) {
-    kind_map_.insert(std::make_pair(ptr, kind));
+    kind_map_.insert(
+        std::make_pair(KindDevPtr{.devId = devId, .ptr = ptr}, kind));
     statistics_[PtrIdentity(libName, devId, kind)].record_alloc(ptr, size);
 }
 
@@ -100,7 +101,7 @@ void MemoryStatisticCollection::record_free(const std::string& libName,
 
 void MemoryStatisticCollection::record_free(const std::string& libName,
                                             size_t devId, void* ptr) {
-    auto iter = kind_map_.find(ptr);
+    auto iter = kind_map_.find(KindDevPtr{.devId = devId, .ptr = ptr});
     if (iter == kind_map_.end()) {
         LOG(WARN) << "free dangling pointer can't found ptr kind!";
         return;
