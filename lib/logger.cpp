@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -9,6 +10,8 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+
+#include "env_util.h"
 
 namespace logger {
 
@@ -295,6 +298,12 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
     auto strLevel = std::getenv("LOG_LEVEL");
     if (strLevel) {
         level_ = static_cast<LogLevel>(atoi(strLevel));
+    }
+    std::vector<std::string> modules =
+        hook::get_env_value<std::vector<std::string>>("LOG_MODULE");
+    if (modules.end() !=
+        std::find(modules.begin(), modules.end(), std::string("PROFILE"))) {
+        module_set_ |= static_cast<size_t>(logger::LogModule::profile);
     }
 }
 

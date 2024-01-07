@@ -21,6 +21,7 @@
 namespace logger {
 
 enum class LogLevel { info = 0, warning, error, fatal };
+enum class LogModule { profile = 0x1 };
 
 struct StringLiteralBase {
     constexpr StringLiteralBase(size_t N) {
@@ -88,6 +89,8 @@ class LogStream {
 
     LogLevel getLevel() const { return level_; }
 
+    bool IsModuleEnable(size_t m) { return module_set_ & m; }
+
     const char* getStrLevel(LogLevel level) {
         constexpr const char* str[] = {
             "\033[0;32m[INFO]\033[0m", "\033[0;33m[WARN]\033[0m",
@@ -106,11 +109,14 @@ class LogStream {
     std::stringstream ss_;
     std::shared_ptr<LogConsumer> logConsumer_;
     std::shared_ptr<LogConfig> cfg_;
+    size_t module_set_{0};
 };
 
 #define LOG_CONDITATION(level)    \
     (static_cast<int>((level)) >= \
      static_cast<int>(logger::LogStream::instance().getLevel()))
+
+#define MLOG_CONDITATION(m) (logger::LogStream::instance().IsModuleEnable(m))
 
 template <typename T>
 using VoidType = void;
@@ -303,6 +309,9 @@ void initLogger(const LogConfig& = LogConfig{});
                   << "[" << logger::makeStringLiteral(__FILE__).simpleFile() \
                   << ":" << std::dec << __LINE__ << "]"
 
+#define MLOG_IMPL(m, str_m, level) \
+    !LOG_CONDITATION(m) ? void(0) : LOG(level) << "[" << str_m << "]"
+
 #define LOG(level) LOG_IMPL(static_cast<int>(level))
 
 #define INTERNAL_CHECK_IMPL(p, msg)                                  \
@@ -331,3 +340,7 @@ void initLogger(const LogConfig& = LogConfig{});
                         fmt::format("expect lhs:{} == rhs:{}", l, r))
 
 #define be_unreachable(...) INTERNAL_CHECK_IMPL(false, __VA_ARGS__)
+
+#define PROFILE logger::LogModule::profile
+
+#define MLOG(m, level) MLOG_IMPL(m, #m, level)
