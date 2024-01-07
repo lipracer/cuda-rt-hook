@@ -89,6 +89,7 @@ MemoryStatisticCollection& MemoryStatisticCollection::instance() {
 void MemoryStatisticCollection::record_alloc(const std::string& libName,
                                              size_t devId, void* ptr,
                                              size_t size, int kind) {
+    LOG(PROFILE) << "[" << libName << "][ALLOC] devId: " << devId << ", ptr: "<< ptr <<", size: "<< size;
     kind_map_.insert(
         std::make_pair(KindDevPtr{.devId = devId, .ptr = ptr}, kind));
     statistics_[PtrIdentity(libName, devId, kind)].record_alloc(ptr, size);
@@ -96,6 +97,7 @@ void MemoryStatisticCollection::record_alloc(const std::string& libName,
 
 void MemoryStatisticCollection::record_free(const std::string& libName,
                                             size_t devId, void* ptr, int kind) {
+    LOG(PROFILE) << "[" << libName << "][FREE] devId: " << devId << ", ptr: "<< ptr <<", size: "<< size;
     statistics_[PtrIdentity(libName, devId, kind)].record_free(ptr);
 }
 

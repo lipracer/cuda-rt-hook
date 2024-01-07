@@ -20,7 +20,7 @@
 
 namespace logger {
 
-enum class LogLevel { info = 0, warning, error, fatal };
+enum class LogLevel { info = 0, warning, error, fatal, profile};
 
 struct StringLiteralBase {
     constexpr StringLiteralBase(size_t N) {
@@ -294,6 +294,7 @@ void initLogger(const LogConfig& = LogConfig{});
 #define WARN logger::LogLevel::warning
 #define ERROR logger::LogLevel::error
 #define FATAL logger::LogLevel::fatal
+#define PROFILE logger::LogLevel::profile
 
 #define LOG_IMPL(level)                                                      \
     !LOG_CONDITATION(level)                                                  \
