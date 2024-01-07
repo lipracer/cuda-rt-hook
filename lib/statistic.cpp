@@ -46,8 +46,8 @@ std::ostream& operator<<(std::ostream& os,
 
 std::ostream& operator<<(std::ostream& os,
                          const MemoryStatisticCollection::PtrIdentity& id) {
-    os << "id(" << id.lib << ",devId:" << id.devId << ",kind:" << id.kind
-       << ")";
+    os << "id(" << shortLibName(id.lib) << ",devId:" << id.devId
+       << ",kind:" << id.kind << ")";
     return os;
 }
 
@@ -110,8 +110,25 @@ void MemoryStatisticCollection::record_free(const std::string& libName,
 }
 
 std::ostream& operator<<(std::ostream& os, const MemoryStatisticCollection& s) {
+    using ptr_type = decltype(s.statistics_)::const_pointer;
+    std::vector<ptr_type> ptrs;
+    ptrs.reserve(s.statistics_.size());
+
     for (auto& ms : s.statistics_) {
-        os << ms.first << "\n" << ms.second << "\n";
+        ptrs.push_back(&ms);
+    }
+
+    std::sort(ptrs.begin(), ptrs.end(), [](ptr_type lhs, ptr_type rhs) {
+        if (lhs->first.lib < rhs->first.lib) {
+            return true;
+        } else if (lhs->first.lib == rhs->first.lib) {
+            return lhs->first.devId < rhs->first.devId;
+        }
+        return false;
+    });
+
+    for (auto ptr : ptrs) {
+        os << ptr->first << "\n" << ptr->second << "\n";
     }
     return os;
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <dlfcn.h>
+
 #include <algorithm>
 #include <atomic>
 #include <functional>
@@ -296,13 +298,22 @@ struct HookInstallerWrap
     // shared_from_this can't call in ctor
     void install() { install_hook(buildInstaller()); }
 
-    ~HookInstallerWrap() = default;
+    ~HookInstallerWrap() {
+        for (auto& handle : handle_map_) {
+            LOG(WARN) << "close lib:" << handle.first;
+            dlclose(handle.second);
+        }
+    }
 
     bool targetLib(const char* name) {
+        if (!src_lib_name_.empty() && strstr(name, src_lib_name_.c_str())) {
+            full_src_lib_name_ = name;
+        }
         libName = name;
         isTarget = static_cast<DerivedT*>(this)->targetLib(name);
         return isTarget;
     }
+
     bool targetSym(const char* name) {
         symName = name;
         return static_cast<PreDefineInterface<DerivedT>*>(this)->targetSym(
@@ -320,7 +331,25 @@ struct HookInstallerWrap
             info);
     }
 
-    void onSuccess() { static_cast<DerivedT*>(this)->onSuccess(); }
+    void onSuccess() {
+        increase_lib_ref();
+        static_cast<DerivedT*>(this)->onSuccess();
+    }
+
+    void increase_lib_ref() {
+        if (full_src_lib_name_.empty()) {
+            return;
+        }
+        auto lib_handle = dlopen(full_src_lib_name_.c_str(), RTLD_LAZY);
+        if (!lib_handle) {
+            LOG(INFO) << "can't open lib:" << full_src_lib_name_;
+        } else {
+            handle_map_.insert(
+                std::pair<std::string, void*>(full_src_lib_name_, lib_handle));
+        }
+    }
+
+    void set_src_lib(const std::string& lib) { src_lib_name_ = lib; }
 
     const char* curSymName() const { return symName; }
     const char* curLibName() const { return libName; }
@@ -348,9 +377,12 @@ struct HookInstallerWrap
     bool isSymbol{false};
     const char* libName{nullptr};
     const char* symName{nullptr};
+    std::string src_lib_name_;
+    std::string full_src_lib_name_;
     std::vector<
         std::unique_ptr<OriginalInfo, std::function<void(OriginalInfo*)>>>
         orgInfos;
+    std::unordered_map<std::string, void*> handle_map_;
 };
 
 }  // namespace hook
