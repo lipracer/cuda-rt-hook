@@ -96,6 +96,7 @@ void MemoryStatisticCollection::record_alloc(const std::string& libName,
 
 void MemoryStatisticCollection::record_free(const std::string& libName,
                                             size_t devId, void* ptr, int kind) {
+    // MLOG(PROFILE, WARN) << "profile ptr:" << ptr;
     statistics_[PtrIdentity(libName, devId, kind)].record_free(ptr);
 }
 
