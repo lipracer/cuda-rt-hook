@@ -9,6 +9,8 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "env_util.h"
@@ -295,15 +297,36 @@ std::thread::id LogStream::threadId() {
 LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
                      const std::shared_ptr<LogConfig>& cfg)
     : logConsumer_(logConsumer), cfg_(cfg) {
-    auto strLevel = std::getenv("LOG_LEVEL");
-    if (strLevel) {
-        level_ = static_cast<LogLevel>(atoi(strLevel));
+    static std::unordered_map<std::string, logger::LogModule> ModuleMap = {
+        {"PROFILE", logger::LogModule::profile},
+        {"TRACE", logger::LogModule::trace}};
+    static std::string level_str_set[] = {"INFO", "WARN", "ERROR", "FATAL"};
+    auto modules =
+        hook::get_env_value<std::vector<std::pair<std::string, size_t>>>(
+            "LOG_LEVEL");
+
+    for (auto& pair : ModuleMap) {
+        auto iter = std::find_if(
+            modules.begin(), modules.end(),
+            [&](const auto& env_v) { return env_v.first == pair.first; });
+        if (modules.end() != iter) {
+            size_t IntModule = static_cast<size_t>(ModuleMap[iter->first]);
+            CHECK_LT(IntModule, sizeof(module_set_) / sizeof(module_set_[0]));
+            module_set_[IntModule] =
+                static_cast<logger::LogLevel>(iter->second);
+        }
     }
-    std::vector<std::string> modules =
-        hook::get_env_value<std::vector<std::string>>("LOG_MODULE");
-    if (modules.end() !=
-        std::find(modules.begin(), modules.end(), std::string("PROFILE"))) {
-        module_set_ |= static_cast<size_t>(logger::LogModule::profile);
+    auto default_lvl_iter =
+        std::find_if(std::begin(level_str_set), std::end(level_str_set),
+                     [&](const auto& str) {
+                         return std::find_if(modules.begin(), modules.end(),
+                                             [&](const auto& env_v) {
+                                                 return env_v.first == str;
+                                             }) != modules.end();
+                     });
+    if (default_lvl_iter != std::end(level_str_set)) {
+        level_ =
+            static_cast<LogLevel>(default_lvl_iter - std::begin(level_str_set));
     }
 }
 

@@ -31,12 +31,16 @@ template <typename T, typename K = typename T::first_type,
 typename std::enable_if<std::is_same<T, std::pair<K, V>>::value, T>::type
 str2value(const char* str, size_t len = std::string::npos) {
     std::pair<K, V> ret;
-    for (size_t i = 0; i < len && str[i] != '\0'; ++i) {
+    size_t i = 0;
+    for (; i < len && str[i] != '\0'; ++i) {
         if (str[i] == '=') {
             ret.first = str2value<K>(str, i);
             ret.second = str2value<V>(str + i + 1);
             break;
         }
+    }
+    if(i =='\0' || i == len) {
+        ret.first = str2value<K>(str, i);
     }
     return ret;
 }
@@ -48,7 +52,7 @@ str2value(const char* str, size_t len = std::string::npos) {
     size_t i = 0, j = 0;
     for (; j < len && str[j] != '\0'; ++j) {
         if (str[j] == ',') {
-            ret.push_back(str2value<V>(str + i, str[j]));
+            ret.push_back(str2value<V>(str + i, j));
             i = j + 1;
         }
     }
