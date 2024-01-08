@@ -26,7 +26,7 @@ static bool disable_log_backtrace(const char* func) {
             trace::CallFrames callFrames;                                    \
             callFrames.CollectNative();                                      \
             callFrames.CollectPython();                                      \
-            MLOG(TRACE, WARN) << __func__ << " with frame:\n" << callFrames; \
+            MLOG(TRACE, INFO) << __func__ << " with frame:\n" << callFrames; \
         }                                                                    \
     } while (0)
 
