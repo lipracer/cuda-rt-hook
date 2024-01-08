@@ -13,6 +13,28 @@
 #include <unordered_set>
 #include <vector>
 
+static std::vector<std::string>& gLoggerLevelStringSet() {
+    static std::vector<std::string> instance = {"INFO", "WARN", "ERROR",
+                                                "FATAL"};
+    return instance;
+}
+
+namespace hook {
+
+template <typename T>
+std::enable_if_t<std::is_same<T, logger::LogLevel>::value> str2value_impl(
+    T& lvl, const char* str, size_t len = std::string::npos) {
+    auto iter = std::find(std::begin(gLoggerLevelStringSet()),
+                          std::end(gLoggerLevelStringSet()), str);
+    if (iter != std::end(gLoggerLevelStringSet())) {
+        lvl = static_cast<logger::LogLevel>(
+            std::distance(std::begin(gLoggerLevelStringSet()), iter));
+    } else {
+        lvl = static_cast<logger::LogLevel>(::atoi(str));
+    }
+}
+}  // namespace hook
+
 #include "env_util.h"
 
 namespace logger {
@@ -300,11 +322,10 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
     static std::unordered_map<std::string, logger::LogModule> ModuleMap = {
         {"PROFILE", logger::LogModule::profile},
         {"TRACE", logger::LogModule::trace}};
-    static std::string level_str_set[] = {"INFO", "WARN", "ERROR", "FATAL"};
-    auto modules =
-        hook::get_env_value<std::vector<std::pair<std::string, size_t>>>(
-            "LOG_LEVEL");
-
+    auto modules = hook::get_env_value<
+        std::vector<std::pair<std::string, logger::LogLevel>>>("LOG_LEVEL");
+    std::fill(std::begin(module_set_), std::end(module_set_),
+              logger::LogLevel::warning);
     for (auto& pair : ModuleMap) {
         auto iter = std::find_if(
             modules.begin(), modules.end(),
@@ -312,21 +333,20 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
         if (modules.end() != iter) {
             size_t IntModule = static_cast<size_t>(ModuleMap[iter->first]);
             CHECK_LT(IntModule, sizeof(module_set_) / sizeof(module_set_[0]));
-            module_set_[IntModule] =
-                static_cast<logger::LogLevel>(iter->second);
+            module_set_[IntModule] = iter->second;
         }
     }
     auto default_lvl_iter =
-        std::find_if(std::begin(level_str_set), std::end(level_str_set),
-                     [&](const auto& str) {
+        std::find_if(std::begin(gLoggerLevelStringSet()),
+                     std::end(gLoggerLevelStringSet()), [&](const auto& str) {
                          return std::find_if(modules.begin(), modules.end(),
                                              [&](const auto& env_v) {
                                                  return env_v.first == str;
                                              }) != modules.end();
                      });
-    if (default_lvl_iter != std::end(level_str_set)) {
-        level_ =
-            static_cast<LogLevel>(default_lvl_iter - std::begin(level_str_set));
+    if (default_lvl_iter != std::end(gLoggerLevelStringSet())) {
+        level_ = static_cast<LogLevel>(default_lvl_iter -
+                                       std::begin(gLoggerLevelStringSet()));
     }
 }
 

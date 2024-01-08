@@ -51,8 +51,8 @@
     export HOOK_DISABLE_TRACE='xpuMemcpy=0,xpuSetDevice=0'
     ```
 
-### example
-`python test/test_import_mock.py`
+### example  
+- ```python test/test_import_mock.py```
 
 ### debug
-- export LOG_LEVEL=0
+- ```export LOG_LEVEL=WARN,TRACE=INFO```
