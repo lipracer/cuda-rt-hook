@@ -21,7 +21,7 @@
 namespace logger {
 
 enum class LogLevel { info = 0, warning, error, fatal };
-enum class LogModule { profile = 0x1 };
+enum class LogModule { profile = 0x1, trace, last };
 
 struct StringLiteralBase {
     constexpr StringLiteralBase(size_t N) {
@@ -89,7 +89,9 @@ class LogStream {
 
     LogLevel getLevel() const { return level_; }
 
-    bool IsModuleEnable(size_t m) { return module_set_ & m; }
+    bool IsModuleEnable(size_t m, size_t l) {
+        return l >= static_cast<size_t>(module_set_[m]);
+    }
 
     const char* getStrLevel(LogLevel level) {
         constexpr const char* str[] = {
@@ -109,14 +111,17 @@ class LogStream {
     std::stringstream ss_;
     std::shared_ptr<LogConsumer> logConsumer_;
     std::shared_ptr<LogConfig> cfg_;
-    size_t module_set_{0};
+    LogLevel module_set_[static_cast<size_t>(LogModule::last)] = {
+        LogLevel::info};
 };
 
 #define LOG_CONDITATION(level)    \
     (static_cast<int>((level)) >= \
      static_cast<int>(logger::LogStream::instance().getLevel()))
 
-#define MLOG_CONDITATION(m) (logger::LogStream::instance().IsModuleEnable(m))
+#define MLOG_CONDITATION(m, l)                                            \
+    (logger::LogStream::instance().IsModuleEnable(static_cast<size_t>(m), \
+                                                  static_cast<size_t>(l)))
 
 template <typename T>
 using VoidType = void;
@@ -310,7 +315,7 @@ void initLogger(const LogConfig& = LogConfig{});
                   << ":" << std::dec << __LINE__ << "]"
 
 #define MLOG_IMPL(m, str_m, level) \
-    !LOG_CONDITATION(m) ? void(0) : LOG(level) << "[" << str_m << "]"
+    !MLOG_CONDITATION(m, level) ? void(0) : LOG(level) << "[" << str_m << "]"
 
 #define LOG(level) LOG_IMPL(static_cast<int>(level))
 
@@ -342,5 +347,6 @@ void initLogger(const LogConfig& = LogConfig{});
 #define be_unreachable(...) INTERNAL_CHECK_IMPL(false, __VA_ARGS__)
 
 #define PROFILE logger::LogModule::profile
+#define TRACE logger::LogModule::trace
 
 #define MLOG(m, level) MLOG_IMPL(m, #m, level)

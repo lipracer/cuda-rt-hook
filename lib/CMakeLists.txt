@@ -9,6 +9,8 @@ add_library(logger STATIC
 #    PRIVATE USE_STL_QUEUE
 #)
 
+find_package(PythonLibs REQUIRED)
+
 add_library(cuda_mock STATIC
     GlobalVarMgr.cpp
     logger.cpp
@@ -22,6 +24,8 @@ add_library(cuda_mock STATIC
 
 
 target_include_directories(cuda_mock PUBLIC ${Python_INCLUDE_DIRS})
+target_link_libraries(cuda_mock PRIVATE ${PYTHON_LIBRARIES})
+
 
 set_target_properties(cuda_mock PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -31,7 +35,7 @@ include_directories(PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/fmt/inclu
 
 
 add_library(plthook STATIC
-    logger.cpp
+    GlobalVarMgr.cpp
     cuda_mock.cpp 
     hook.cpp 
     cuda_op_tracer.cpp 
@@ -42,6 +46,6 @@ target_compile_definitions(plthook
     PRIVATE FMT_HEADER_ONLY
 )
 target_include_directories(plthook PUBLIC ${Python_INCLUDE_DIRS})
-
+target_link_libraries(plthook PRIVATE ${PYTHON_LIBRARIES})
 target_link_libraries(plthook PRIVATE pthread dl)
 

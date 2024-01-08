@@ -20,14 +20,14 @@ static bool disable_log_backtrace(const char* func) {
     return false;
 }
 
-#define IF_ENABLE_LOG_TRACE(func)                                    \
-    do {                                                             \
-        if (!disable_log_backtrace(func)) {                          \
-            trace::CallFrames callFrames;                            \
-            callFrames.CollectNative();                              \
-            callFrames.CollectPython();                              \
-            LOG(WARN) << __func__ << " with frame:\n" << callFrames; \
-        }                                                            \
+#define IF_ENABLE_LOG_TRACE(func)                                            \
+    do {                                                                     \
+        if (!disable_log_backtrace(func)) {                                  \
+            trace::CallFrames callFrames;                                    \
+            callFrames.CollectNative();                                      \
+            callFrames.CollectPython();                                      \
+            MLOG(TRACE, WARN) << __func__ << " with frame:\n" << callFrames; \
+        }                                                                    \
     } while (0)
 
 namespace trace {
