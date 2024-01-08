@@ -55,4 +55,4 @@
 - ```python test/test_import_mock.py```
 
 ### debug
-- ```export LOG_LEVEL=WARN,TRACE=1```
+- ```export LOG_LEVEL=WARN,TRACE=INFO```
