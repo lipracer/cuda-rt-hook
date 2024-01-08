@@ -20,7 +20,7 @@
 
 namespace logger {
 
-enum class LogLevel { info = 0, warning, error, fatal };
+enum class LogLevel { info = 0, warning, error, fatal, last };
 enum class LogModule { profile = 0x1, trace, last };
 
 struct StringLiteralBase {
@@ -154,6 +154,12 @@ struct LogWrapper {
                               << "[TID:" << LogStream::threadId() << "]";
     }
     explicit LogWrapper(int level) : LogWrapper(static_cast<LogLevel>(level)) {}
+
+    explicit LogWrapper(LogLevel level, bool) : level_(LogLevel::last) {
+        LogStream::instance() << LogStream::instance().getStrLevel(level)
+                              << "[TID:" << LogStream::threadId() << "]";
+    }
+
     ~LogWrapper() {
         if (LOG_CONDITATION(level_)) {
             LogStream::instance().flush();
@@ -314,8 +320,14 @@ void initLogger(const LogConfig& = LogConfig{});
                   << "[" << logger::makeStringLiteral(__FILE__).simpleFile() \
                   << ":" << std::dec << __LINE__ << "]"
 
-#define MLOG_IMPL(m, str_m, level) \
-    !MLOG_CONDITATION(m, level) ? void(0) : LOG(level) << "[" << str_m << "]"
+#define MLOG_IMPL(m, str_m, level)                                           \
+    !MLOG_CONDITATION(m, level)                                              \
+        ? void(0)                                                            \
+        : logger::StreamPlaceHolder() <                                      \
+              logger::LogWrapper(level, true)                                \
+                  << "[" << logger::makeStringLiteral(__FILE__).simpleFile() \
+                  << ":" << std::dec << __LINE__ << "]"                      \
+                  << "[" << str_m << "]"
 
 #define LOG(level) LOG_IMPL(static_cast<int>(level))
 
