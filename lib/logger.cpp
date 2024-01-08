@@ -13,6 +13,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "env_util.h"
+
 static std::vector<std::string>& gLoggerLevelStringSet() {
     static std::vector<std::string> instance = {"INFO", "WARN", "ERROR",
                                                 "FATAL"};
@@ -21,21 +23,21 @@ static std::vector<std::string>& gLoggerLevelStringSet() {
 
 namespace hook {
 
-template <typename T>
-std::enable_if_t<std::is_same<T, logger::LogLevel>::value> str2value_impl(
-    T& lvl, const char* str, size_t len = std::string::npos) {
-    auto iter = std::find(std::begin(gLoggerLevelStringSet()),
-                          std::end(gLoggerLevelStringSet()), str);
-    if (iter != std::end(gLoggerLevelStringSet())) {
-        lvl = static_cast<logger::LogLevel>(
-            std::distance(std::begin(gLoggerLevelStringSet()), iter));
-    } else {
-        lvl = static_cast<logger::LogLevel>(::atoi(str));
+template <>
+struct str2value_impl<logger::LogLevel> {
+    void operator()(logger::LogLevel& lvl, const char* str,
+                    size_t len = std::string::npos) {
+        auto iter = std::find(std::begin(gLoggerLevelStringSet()),
+                              std::end(gLoggerLevelStringSet()), str);
+        if (iter != std::end(gLoggerLevelStringSet())) {
+            lvl = static_cast<logger::LogLevel>(
+                std::distance(std::begin(gLoggerLevelStringSet()), iter));
+        } else {
+            lvl = static_cast<logger::LogLevel>(::atoi(str));
+        }
     }
-}
+};
 }  // namespace hook
-
-#include "env_util.h"
 
 namespace logger {
 
