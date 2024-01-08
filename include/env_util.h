@@ -10,53 +10,55 @@
 namespace hook {
 
 template <typename T>
-T str2value(
-    const char* str, size_t len = std::string::npos,
-    std::void_t<decltype(operator<<(std::stringstream(), std::declval<T>()))>* =
-        nullptr) {
+void str2value_impl(T& value, const char* str, size_t len = std::string::npos,
+                    std::enable_if_t<std::is_same<T, std::string>::value ||
+                                     std::is_integral<T>::value>* = nullptr) {
     std::stringstream ss;
     if (len != std::string::npos) {
         ss << std::string(str, str + len);
-
     } else {
         ss << str;
     }
-    T ret{};
-    ss >> ret;
-    return ret;
+    ss >> value;
 }
+
+template <typename T>
+T str2value(const char* str, size_t len = std::string::npos);
 
 template <typename T, typename K = typename T::first_type,
           typename V = typename T::second_type>
-typename std::enable_if<std::is_same<T, std::pair<K, V>>::value, T>::type
-str2value(const char* str, size_t len = std::string::npos) {
-    std::pair<K, V> ret;
+std::enable_if_t<std::is_same<std::pair<K, V>, T>::value> str2value_impl(
+    T& pair, const char* str, size_t len = std::string::npos) {
     size_t i = 0;
     for (; i < len && str[i] != '\0'; ++i) {
         if (str[i] == '=') {
-            ret.first = str2value<K>(str, i);
-            ret.second = str2value<V>(str + i + 1);
+            pair.first = str2value<K>(str, i);
+            pair.second = str2value<V>(str + i + 1);
             break;
         }
     }
-    if(i =='\0' || i == len) {
-        ret.first = str2value<K>(str, i);
+    if (i == '\0' || i == len) {
+        pair.first = str2value<K>(str, i);
     }
-    return ret;
 }
 
 template <typename T, typename V = typename T::value_type>
-typename std::enable_if<std::is_same<T, std::vector<V>>::value, T>::type
-str2value(const char* str, size_t len = std::string::npos) {
-    std::vector<V> ret;
+std::enable_if_t<std::is_same<std::vector<V>, T>::value> str2value_impl(
+    T& vec, const char* str, size_t len = std::string::npos) {
     size_t i = 0, j = 0;
     for (; j < len && str[j] != '\0'; ++j) {
         if (str[j] == ',') {
-            ret.push_back(str2value<V>(str + i, j));
+            vec.push_back(str2value<V>(str + i, j));
             i = j + 1;
         }
     }
-    ret.push_back(str2value<V>(str + i, j - i));
+    vec.push_back(str2value<V>(str + i, j - i));
+}
+
+template <typename T>
+T str2value(const char* str, size_t len) {
+    T ret;
+    str2value_impl(ret, str, len);
     return ret;
 }
 
