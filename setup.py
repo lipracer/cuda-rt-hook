@@ -12,7 +12,7 @@ sync_shell(r"cd build/lib && ls | grep -v '\<cuda_mock\>' | xargs -I {} rm -rf {
 
 setup(
     name="cuda-mock",
-    version="0.0.4",
+    version="0.0.5",
     author="lipracer",
     author_email="lipracer@gmail.com",
     description="a tools hook some api call at runtime",
