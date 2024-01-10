@@ -8,6 +8,8 @@ extern "C" {
 
 void dh_initialize();
 
+void dh_uninitialize();
+
 void dh_internal_install_hook(const char* srcLib, const char* targetLib,
                               const char* symbolName,
                               const char* hookerLibPath = nullptr,

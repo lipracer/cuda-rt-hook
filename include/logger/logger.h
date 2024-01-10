@@ -305,6 +305,8 @@ class StringPool {
 
 void initLogger(const LogConfig& = LogConfig{});
 
+void destroy_logger();
+
 }  // namespace logger
 
 #define INFO logger::LogLevel::info
