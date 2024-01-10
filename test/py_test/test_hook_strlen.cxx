@@ -3,7 +3,11 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <unistd.h>
+
 #include <fstream>
+#include <iostream>
+
+#include "logger/logger.h"
 
 #define EXPORT __attribute__((__visibility__("default")))
 
@@ -13,7 +17,7 @@ void* __origin_strlen = nullptr;
 
 EXPORT size_t strlen(const char* str) {
     size_t len = (*reinterpret_cast<decltype(&strlen)>(__origin_strlen))(str);
-    printf("run into hook func str:%s and len:%lld\n", str, len);
+    LOG(WARN) << "run into hook func str:" << str << "and len:" << len;
     return len;
 }
 

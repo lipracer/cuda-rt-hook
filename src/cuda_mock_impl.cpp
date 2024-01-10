@@ -39,5 +39,12 @@ HOOK_API void internal_install_hook(PHStr srcLib, PHStr targetLib,
                              hookerSymbolName);
 }
 
+HOOK_API void internal_install_hook_regex(PHStr srcLib, PHStr targetLib,
+                                          PHStr symbolName, PHStr hookerLibPath,
+                                          PHStr hookerSymbolName) {
+    dh_internal_install_hook_regex(srcLib, targetLib, symbolName, hookerLibPath,
+                                   hookerSymbolName);
+}
+
 HOOK_API void xpu_initialize() { xpu_dh_initialize(); }
 }

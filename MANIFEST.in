@@ -1,0 +1,5 @@
+graft build/lib/cuda_mock/include
+recursive-exclude build/lib *.a
+prune build/lib/*.cmake
+prune build/lib/CMakeFiles
+prune build/lib/cuda_mock-0.0.5.dist-info
