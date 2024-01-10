@@ -41,9 +41,8 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib)
 # Install directive for scikit-build-core
 install(TARGETS cuda_mock_impl LIBRARY DESTINATION cuda_mock)
 
-set(DIRECTORY_TO_INSTALL ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-install(DIRECTORY ${DIRECTORY_TO_INSTALL} DESTINATION ${CMAKE_BINARY_DIR}/lib/cuda_mock)
+#set(DIRECTORY_TO_INSTALL ${CMAKE_CURRENT_SOURCE_DIR}/include)
+#install(DIRECTORY ${DIRECTORY_TO_INSTALL} DESTINATION ${CMAKE_BINARY_DIR}/lib/cuda_mock)
 
 ################################
 # GTest

@@ -11,6 +11,9 @@ def add(lhs, rhs):
 def initialize():
     return cuda_mock_impl.initialize()
 
+def uninitialize():
+    return cuda_mock_impl.uninitialize()
+
 def internal_install_hook(*args):
     new_args = [ctypes.c_char_p(arg.encode('utf-8')) for arg in args]
     return cuda_mock_impl.internal_install_hook(*new_args)

@@ -6,6 +6,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <exception>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -175,6 +176,24 @@ inline void fwriteString(SimpleStringRef* str, std::FILE* fh) {
     fwrite(str->c_str(), str->size(), 1, fh);
 }
 
+class LogStreamCollection {
+   public:
+    static LogStreamCollection& instance();
+    void collect(LogStream* stream);
+    std::shared_ptr<LogConsumer> collect_consumer(
+        const std::shared_ptr<LogConfig>& cfg);
+    void release_all_stream();
+    std::shared_ptr<LogConsumer>&& release_consumer() {
+        return std::move(consumer_);
+    }
+
+   private:
+    std::mutex stream_mtx;
+    std::mutex consumer_mtx;
+    std::unordered_set<LogStream*> stream_set;
+    std::shared_ptr<LogConsumer> consumer_;
+};
+
 class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
    public:
     LogConsumer(const std::shared_ptr<LogConfig>& cfg)
@@ -186,7 +205,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
           cfg_(cfg) {
         tmpBuffer_.resize(256);
         if (cfg->mode == LogConfig::kAsync) {
-            future_ = promise_.get_future();
+            // future_ = promise_.get_future();
             th_ = std::make_unique<std::thread>(&LogConsumer::print, this);
         }
     }
@@ -266,18 +285,12 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
         }
-        self->promise_.set_value(0);
     }
-
-    ~LogConsumer() { sync_pause_loop(); }
 
     void sync_pause_loop() {
         exit_.store(true);
         if (cfg_->mode == LogConfig::kAsync) {
-            // don't call join avoid this thread already exit
-            // if (th_) th_->join();
-            (void)future_.get();
-            fflush(cfg_->stream);
+            if (th_ && th_->joinable()) th_->join();
         }
     }
 
@@ -285,6 +298,14 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
         sync_pause_loop();
         // write nullptr statement maybe be motion to front
         (void)malloc(std::numeric_limits<size_t>::max());
+    }
+
+    void flush_queue() {
+        while (buf_.size()) {
+            auto str = buf_.front();
+            buf_.pop_front();
+            fwriteString(str, cfg_->stream);
+        }
     }
 
     StringQueue& queue() { return buf_; }
@@ -298,15 +319,48 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
     std::shared_ptr<LogConfig> cfg_;
     std::condition_variable cv_;
     bool started_{false};
-    std::promise<int> promise_;
-    std::future<int> future_;
+    // std::promise<int> promise_;
+    // std::future<int> future_;
 };
 
 size_t StringLiteralBase::MN = 0;
 
+std::thread::id LogStream::threadId() {
+    static thread_local std::thread::id _id = std::this_thread::get_id();
+    return _id;
+}
+
+void LogStreamCollection::collect(LogStream* stream) {
+    std::lock_guard<std::mutex> lg(stream_mtx);
+    stream_set.insert(stream);
+}
+
+std::shared_ptr<LogConsumer> LogStreamCollection::collect_consumer(
+    const std::shared_ptr<LogConfig>& cfg) {
+    if (consumer_) {
+        return consumer_;
+    }
+    std::lock_guard<std::mutex> lg(consumer_mtx);
+    if (!consumer_)
+        consumer_ = std::shared_ptr<LogConsumer>(new LogConsumer(cfg));
+    return consumer_;
+}
+
+void LogStreamCollection::release_all_stream() {
+    for (auto stream : stream_set) {
+        delete stream;
+    }
+}
+
+LogStreamCollection& LogStreamCollection::instance() {
+    static LogStreamCollection* __instance = new LogStreamCollection();
+    return *__instance;
+}
+
 LogStream& LogStream::instance(const LogConfig& cfg) {
     auto sp_cfg = std::make_shared<LogConfig>(cfg);
-    static std::shared_ptr<LogConsumer> gLogConsumer(new LogConsumer(sp_cfg));
+    std::shared_ptr<LogConsumer> gLogConsumer =
+        LogStreamCollection::instance().collect_consumer(sp_cfg);
     // static thread_local std::unique_ptr<LogStream> __instance =
     //     std::make_unique<LogStream>(gLogConsumer);
 
@@ -314,11 +368,6 @@ LogStream& LogStream::instance(const LogConfig& cfg) {
         new LogStream(gLogConsumer, sp_cfg);
     gLogConsumer->notify();
     return *__instance;
-}
-
-std::thread::id LogStream::threadId() {
-    static thread_local std::thread::id _id = std::this_thread::get_id();
-    return _id;
 }
 
 LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
@@ -353,14 +402,10 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
         level_ = static_cast<LogLevel>(default_lvl_iter -
                                        std::begin(gLoggerLevelStringSet()));
     }
+    LogStreamCollection::instance().collect(this);
 }
 
-LogStream::~LogStream() {
-    std::stringstream ss;
-    ss << LogStream::threadId();
-    int64_t tid;
-    ss >> tid;
-}
+LogStream::~LogStream() {}
 
 void LogStream::flush() {
     ss_ << "\n";
@@ -376,6 +421,12 @@ void LogStream::flush() {
 void LogStream::log_fatal() { logConsumer_->report_fatal(); }
 
 void initLogger(const LogConfig& cfg) { (void)LogStream::instance(cfg); }
+
+void destroy_logger() {
+    LogStreamCollection::instance().release_all_stream();
+    auto consumer = LogStreamCollection::instance().release_consumer();
+    consumer->sync_pause_loop();
+}
 
 thread_local std::chrono::high_resolution_clock::duration
     LogWrapper::totalDur{};

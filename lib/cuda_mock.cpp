@@ -27,6 +27,8 @@ void dh_initialize() {
     // hook::install_hook();
 }
 
+void dh_uninitialize() {}
+
 static hook::GlobalVarMgr<void*> oldFuncAddr(nullptr);
 
 void log_router() {
@@ -133,7 +135,8 @@ struct DHRegexHook : public hook::HookInstallerWrap<DHRegexHook> {
         }
     }
     bool targetLib(const char* name) {
-        bool match = regex_match(strs_[1], name) && strcmp(name, strs_[3].c_str());
+        bool match =
+            regex_match(strs_[1], name) && strcmp(name, strs_[3].c_str());
         return visited_.insert(name).second && match;
     }
 
@@ -187,11 +190,17 @@ void dh_internal_install_hook_regex(const char* srcLib, const char* targetLib,
                                     const char* symbolName,
                                     const char* hookerLibPath,
                                     const char* hookerSymbolName) {
-    static auto install_wrap = std::make_shared<DHRegexHook>(
-        srcLib, targetLib, symbolName, hookerLibPath, hookerSymbolName);
-    install_wrap->install();
+    static std::vector<std::shared_ptr<DHRegexHook>> shared_ptr_vec;
+
+    shared_ptr_vec.emplace_back(std::make_shared<DHRegexHook>(
+        srcLib, targetLib, symbolName, hookerLibPath, hookerSymbolName));
+    shared_ptr_vec.back()->install();
     LOG(INFO) << "dh_internal_install_hook_regex complete!";
 }
+
+void DhLibraryUnloader() __attribute__((destructor));
+
+void DhLibraryUnloader() { logger::destroy_logger(); }
 }
 
 #endif

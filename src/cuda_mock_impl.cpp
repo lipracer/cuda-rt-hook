@@ -32,6 +32,8 @@ HOOK_API int add(int lhs, int rhs) { return lhs + rhs; }
 
 HOOK_API void initialize() { dh_initialize(); }
 
+HOOK_API void uninitialize() { dh_uninitialize(); };
+
 HOOK_API void internal_install_hook(PHStr srcLib, PHStr targetLib,
                                     PHStr symbolName, PHStr hookerLibPath,
                                     PHStr hookerSymbolName) {
