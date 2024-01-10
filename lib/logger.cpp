@@ -260,7 +260,10 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
             }
         LOOP_END:
             if (self.use_count() > 1) {
-                std::this_thread::yield();
+                // https://stackoverflow.com/questions/17325888/c11-thread-waiting-behaviour-stdthis-threadyield-vs-stdthis-thread
+                // yield always takes up 100 cpu time
+                // std::this_thread::yield();
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
         }
         self->promise_.set_value(0);

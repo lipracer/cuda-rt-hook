@@ -12,6 +12,11 @@ void dh_internal_install_hook(const char* srcLib, const char* targetLib,
                               const char* symbolName,
                               const char* hookerLibPath = nullptr,
                               const char* hookerSymbolName = nullptr);
+
+void dh_internal_install_hook_regex(const char* srcLib, const char* targetLib,
+                                    const char* symbolName,
+                                    const char* hookerLibPath,
+                                    const char* hookerSymbolName);
 }
 
 #endif

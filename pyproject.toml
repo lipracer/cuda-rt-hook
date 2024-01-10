@@ -1,6 +1,6 @@
 [project]
 name = "cuda-mock"
-version = "0.0.5"
+version = "0.0.6"
 description = "mock cuda runtime api"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -12,8 +12,3 @@ license = { text = "BSD-3-Clause" }
 [build-system]
 requires = ["setuptools>=52", "wheel", "scikit-build", "cmake>=3.17", "ninja"]
 build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-# If there are data files included in your packages that need to be
-# installed, specify them here.
-package-data = {"cuda_mock" = ["*.so"]}

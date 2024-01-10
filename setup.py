@@ -1,4 +1,5 @@
 from setuptools import setup, find_packages
+from distutils.core import setup
 import os, sys
 
 def sync_shell(cmd):
@@ -8,11 +9,12 @@ def sync_shell(cmd):
 sync_shell("rm -rf build")
 script_dir = os.path.dirname(os.path.abspath(__file__))
 sync_shell(f"cmake -S {script_dir} -B build -GNinja && cmake --build build")
+sync_shell(f"cd build && ninja install")
 sync_shell(r"cd build/lib && ls | grep -v '\<cuda_mock\>' | xargs -I {} rm -rf {}")
 
 setup(
     name="cuda-mock",
-    version="0.0.5",
+    version="0.0.6",
     author="lipracer",
     author_email="lipracer@gmail.com",
     description="a tools hook some api call at runtime",
@@ -20,5 +22,6 @@ setup(
     url="https://github.com/lipracer/torch-cuda-mock", 
 
     packages=['cuda_mock'],
-    package_dir={'cuda_mock': 'src/cuda_mock'}
+    # include_package_data = True,
+    package_dir={'cuda_mock': 'src/cuda_mock'},
 )

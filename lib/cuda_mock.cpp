@@ -1,9 +1,11 @@
 #include "cuda_mock.h"
 
 #include <dlfcn.h>
+#include <regex.h>
 #include <string.h>
 
 #include <csetjmp>
+#include <unordered_set>
 
 #include "GlobalVarMgr.h"
 #include "backtrace.h"
@@ -116,6 +118,79 @@ void dh_internal_install_hook(const char* srcLib, const char* targetLib,
         LOG(INFO) << __func__ << ":" << *oldFuncAddr;
     };
     hook::install_hook(hookInstaller);
+}
+
+struct DHRegexHook : public hook::HookInstallerWrap<DHRegexHook> {
+    DHRegexHook(const char* srcLib, const char* targetLib,
+                const char* symbolName, const char* hookerLibPath,
+                const char* hookerSymbolName)
+        : strs_(5) {
+        strs_ = {srcLib, targetLib, symbolName, hookerLibPath,
+                 hookerSymbolName};
+        dynamic_obj_handle_ = dlopen(hookerLibPath, RTLD_LAZY);
+        if (!dynamic_obj_handle_) {
+            LOG(FATAL) << "can't open lib:" << hookerLibPath;
+        }
+    }
+    bool targetLib(const char* name) {
+        bool match = regex_match(strs_[1], name) && strcmp(name, strs_[3].c_str());
+        return visited_.insert(name).second && match;
+    }
+
+    bool targetSym(const char* name) { return strs_[2] == name; }
+
+    void* newFuncPtr(const hook::OriginalInfo& info) {
+        std::string org_symbol = "__origin_" + std::string(curSymName());
+        auto org_addr = dlsym(dynamic_obj_handle_, org_symbol.c_str());
+        if (org_addr) {
+            *reinterpret_cast<void**>(org_addr) = info.oldFuncPtr;
+        } else {
+        }
+        return dlsym(dynamic_obj_handle_, strs_[2].c_str());
+    }
+    void onSuccess() {}
+
+    bool regex_match(const std::string& pattern, const char* str) {
+        regex_t regex;
+        int reti = 0;
+        do {
+            /* Compile regular expression */
+            reti = regcomp(&regex, pattern.c_str(), 0);
+            if (reti) {
+                break;
+            }
+            /* Execute regular expression */
+            reti = regexec(&regex, str, 0, nullptr, 0);
+            if (reti == REG_NOMATCH) {
+                return false;
+            }
+            if (0 == reti) {
+                return true;
+            }
+        } while (0);
+        return !reti;
+    }
+
+    ~DHRegexHook() {
+        if (dynamic_obj_handle_) {
+            dlclose(dynamic_obj_handle_);
+        }
+    }
+
+   private:
+    std::vector<std::string> strs_;
+    void* dynamic_obj_handle_{nullptr};
+    std::unordered_set<std::string> visited_;
+};
+
+void dh_internal_install_hook_regex(const char* srcLib, const char* targetLib,
+                                    const char* symbolName,
+                                    const char* hookerLibPath,
+                                    const char* hookerSymbolName) {
+    static auto install_wrap = std::make_shared<DHRegexHook>(
+        srcLib, targetLib, symbolName, hookerLibPath, hookerSymbolName);
+    install_wrap->install();
+    LOG(INFO) << "dh_internal_install_hook_regex complete!";
 }
 }
 

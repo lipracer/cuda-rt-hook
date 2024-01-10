@@ -2,7 +2,7 @@ import os
 import cuda_mock
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-xpu_lib = cuda_mock.DynamicObj(f'{script_dir}/xpu_libs.cxx').appen_compile_opts('-g -lpthread').compile().get_lib()
+xpu_lib = cuda_mock.dynamic_obj(f'{script_dir}/xpu_libs.cxx').appen_compile_opts('-g -lpthread').compile().get_lib()
 new_name = xpu_lib.split('/')
 new_name[-1] = 'libxpurt.so'
 new_name = '/'.join(new_name)
@@ -135,8 +135,8 @@ EXPORT void test_xpu_api() {
 
 '''
 
-dummy_lib_0 = cuda_mock.DynamicObj(cpp_code_0, True).appen_compile_opts('-g -lxpurt', '-L/tmp', '-Wl,-rpath,/tmp').compile().get_lib()
-dummy_lib_1 = cuda_mock.DynamicObj(cpp_code_1, True).appen_compile_opts('-g -lxpurt', '-L/tmp', '-Wl,-rpath,/tmp').compile().get_lib()
+dummy_lib_0 = cuda_mock.dynamic_obj(cpp_code_0, True).appen_compile_opts('-g -lxpurt', '-L/tmp', '-Wl,-rpath,/tmp').compile().get_lib()
+dummy_lib_1 = cuda_mock.dynamic_obj(cpp_code_1, True).appen_compile_opts('-g -lxpurt', '-L/tmp', '-Wl,-rpath,/tmp').compile().get_lib()
 
 from cuda_mock import *
 import ctypes

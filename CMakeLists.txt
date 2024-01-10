@@ -32,7 +32,7 @@ endif()
 
 # list(APPEND CMAKE_PREFIX_PATH "third_party/fmt")
 # find_package(fmt)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt EXCLUDE_FROM_ALL)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib)
@@ -41,11 +41,15 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib)
 # Install directive for scikit-build-core
 install(TARGETS cuda_mock_impl LIBRARY DESTINATION cuda_mock)
 
+set(DIRECTORY_TO_INSTALL ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+install(DIRECTORY ${DIRECTORY_TO_INSTALL} DESTINATION ${CMAKE_BINARY_DIR}/lib/cuda_mock)
+
 ################################
 # GTest
 ################################
 enable_testing()
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest EXCLUDE_FROM_ALL)
 
 file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/**/*.cpp")
 add_executable(UnitTest ${TEST_SOURCES})
