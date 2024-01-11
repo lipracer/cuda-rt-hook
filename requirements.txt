@@ -1,5 +1,5 @@
-build
-wheel
-ninja
-setuptools
+build==1.0.3
+wheel==0.37.1
+ninja==1.11.1.1
+setuptools==68.0.0
 pytest
