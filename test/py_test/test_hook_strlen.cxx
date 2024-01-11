@@ -17,7 +17,7 @@ void* __origin_strlen = nullptr;
 
 EXPORT size_t strlen(const char* str) {
     size_t len = (*reinterpret_cast<decltype(&strlen)>(__origin_strlen))(str);
-    LOG(WARN) << "run into hook func str:" << str << "and len:" << len;
+    LOG(WARN) << "run into hook func str:" << str << " and len:" << len;
     return len;
 }
 
