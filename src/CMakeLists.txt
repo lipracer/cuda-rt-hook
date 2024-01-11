@@ -7,5 +7,5 @@ include_directories(PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
 set_target_properties(cuda_mock_impl
     PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib/cuda_mock
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_INSTALL_PREFIX}/cuda_mock
 )

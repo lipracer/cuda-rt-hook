@@ -3,3 +3,4 @@ build/**
 .vscode/**
 dist/**
 **/__pycache__/**
+src/cuda_mock.egg-info/**

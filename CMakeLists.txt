@@ -37,12 +37,10 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt EXCLUDE_FROM_ALL)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib)
 
+set(DST_DIRECTORY_TO_INSTALL ${CMAKE_INSTALL_PREFIX}/cuda_mock)
 
-# Install directive for scikit-build-core
-install(TARGETS cuda_mock_impl LIBRARY DESTINATION cuda_mock)
-
-#set(DIRECTORY_TO_INSTALL ${CMAKE_CURRENT_SOURCE_DIR}/include)
-#install(DIRECTORY ${DIRECTORY_TO_INSTALL} DESTINATION ${CMAKE_BINARY_DIR}/lib/cuda_mock)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include DESTINATION ${DST_DIRECTORY_TO_INSTALL})
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt/include DESTINATION ${DST_DIRECTORY_TO_INSTALL})
 
 ################################
 # GTest
