@@ -1,6 +1,6 @@
 [project]
 name = "cuda-mock"
-version = "0.0.8"
+version = "0.0.9"
 description = "mock cuda runtime api"
 readme = "README.md"
 requires-python = ">=3.8"
