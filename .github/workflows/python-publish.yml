@@ -11,51 +11,35 @@ name: Upload Python Package
 on:
   release:
     types: [published]
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - sudo: required
-            services:
-              - docker
-            env: DOCKER_IMAGE=quay.io/pypa/manylinux1_x86_64
-                 PLAT=manylinux1_x86_64
-          - sudo: required
-            services:
-              - docker
-            env: DOCKER_IMAGE=quay.io/pypa/manylinux1_i686
-                 PRE_CMD=linux32
-                 PLAT=manylinux1_i686
-          - sudo: required
-            services:
-              - docker
-            env: DOCKER_IMAGE=quay.io/pypa/manylinux2010_x86_64
-                 PLAT=manylinux2010_x86_64
 
     steps:
-      # - name: pull docker
-      #   run: docker pull $DOCKER_IMAGE
-        
-      # - name: run docker
-      #   run: |
-      #     docker run --rm -e PLAT=${{ matrix.PLAT }} -v $(pwd):/io $DOCKER_IMAGE ${{ matrix.PRE_CMD }} /io/script/build-wheels.sh
-      #     ls wheelhouse/
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-      # - name: Create dist directory
-      #   run: mkdir dist
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
 
-      # - name: Copy wheels to dist
-      #   run: cp wheelhouse/* dist
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip        
 
-      - name: build wheel package
-        run: bash script/build-wheels.sh
+    - name: Set up CMake
+      run: |
+        pip install --upgrade pip
+        sudo apt-get install -y cmake
 
-      - name: Publish package
-        if: startsWith(github.ref, 'refs/tags')
-        uses: pypa/gh-action-pypi-publish@release/v1.8
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
+    - name: Build package
+      run:  |
+        bash script/build-wheels.sh
+
+    - name: Publish package
+      uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}
