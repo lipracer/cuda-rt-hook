@@ -8,6 +8,9 @@
 
 name: Upload Python Package
 
+notifications:
+  email: false
+
 on:
   release:
     types: [published]
@@ -16,41 +19,49 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        compiler: [gcc-9]
+        include:
+          - sudo: required
+            services:
+              - docker
+            env: DOCKER_IMAGE=quay.io/pypa/manylinux1_x86_64
+                PLAT=manylinux1_x86_64
+          - sudo: required
+            services:
+              - docker
+            env: DOCKER_IMAGE=quay.io/pypa/manylinux1_i686
+                PRE_CMD=linux32
+                PLAT=manylinux1_i686
+          - sudo: required
+            services:
+              - docker
+            env: DOCKER_IMAGE=quay.io/pypa/manylinux2010_x86_64
+                PLAT=manylinux2010_x86_64
 
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.x'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip        
-
-    - name: Set up compiler
-      run: |
-        if [ "${{ matrix.compiler }}" = "gcc-9" ]; then
-          sudo apt-get install -y gcc-9
-          sudo apt-get install -y g++-9
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 90
-        fi
-
-    - name: Set up CMake
-      run: |
-        pip install --upgrade pip
-        sudo apt-get install -y cmake
+    install:
+      - docker pull $DOCKER_IMAGE
 
     - name: Build package
       run:  |
-        bash script/build.sh
+        - docker run --rm -e PLAT=$PLAT -v `pwd`:/io $DOCKER_IMAGE $PRE_CMD /io/script/build-wheels.sh
+        - ls wheelhouse/
+        - mkdir dist
+        - cp wheelhouse/* dist
+
+    # - name: Publish package to Test PyPI
+    #   if: ${{ !startsWith(github.ref, 'refs/tags') }}
+    #   uses: pypa/gh-action-pypi-publish@release/v1.8
+    #   with:
+    #     password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+    #     repository_url: https://test.pypi.org/legacy/
+
 
     - name: Publish package
+      if: startsWith(github.ref, 'refs/tags')
       uses: pypa/gh-action-pypi-publish@release/v1.8
       with:
         user: __token__
