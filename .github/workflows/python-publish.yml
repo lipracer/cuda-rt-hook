@@ -17,25 +17,25 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - sudo: required
-            services:
-              - docker
-            env: DOCKER_IMAGE=quay.io/pypa/manylinux1_x86_64
-                PLAT=manylinux1_x86_64
-          - sudo: required
-            services:
-              - docker
-            env: DOCKER_IMAGE=quay.io/pypa/manylinux1_i686
-                PRE_CMD=linux32
-                PLAT=manylinux1_i686
-          - sudo: required
-            services:
-              - docker
-            env: DOCKER_IMAGE=quay.io/pypa/manylinux2010_x86_64
-                PLAT=manylinux2010_x86_64
+
+    matrix:
+      include:
+        - sudo: required
+          services:
+            - docker
+          env: DOCKER_IMAGE=quay.io/pypa/manylinux1_x86_64
+              PLAT=manylinux1_x86_64
+        - sudo: required
+          services:
+            - docker
+          env: DOCKER_IMAGE=quay.io/pypa/manylinux1_i686
+              PRE_CMD=linux32
+              PLAT=manylinux1_i686
+        - sudo: required
+          services:
+            - docker
+          env: DOCKER_IMAGE=quay.io/pypa/manylinux2010_x86_64
+              PLAT=manylinux2010_x86_64
 
     steps:
     - uses: actions/checkout@v4
