@@ -31,15 +31,21 @@ jobs:
         pip install -r requirements.txt
         git submodule update --init --recursive
         git clean -xfd
-        python setup.py sdist bdist_wheel
 
-    - name: Run tests
+    - name: Run cpp tests
       run: |
-        ls dist
-        pip install --force-reinstall dist/*.whl
+        cmake -S . -B build -DCMAKE_INSTALL_PREFIX=`$pwd/`build
+        cmake --build build
         cd build
         ctest -R
         cd ../
+        rm -rf build
+
+    - name: Run python tests
+      run: |
+        python setup.py sdist bdist_wheel
+        ls dist
+        pip install --force-reinstall dist/*.whl
         pytest test
 
     - name: Upload test results
