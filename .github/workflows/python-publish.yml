@@ -8,9 +8,6 @@
 
 name: Upload Python Package
 
-notifications:
-  email: false
-
 on:
   release:
     types: [published]
