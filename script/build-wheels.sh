@@ -2,6 +2,7 @@
 
 set -e
 
+git submodule update --init --recursive
 pip install -r requirements.txt
 python setup.py sdist bdist_wheel
 
