@@ -8,15 +8,21 @@ if(NOT DEFINED CMAKE_BUILD_TYPE)
 set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_compile_options(-Wall -Wextra -Wno-unused-parameter 
+set(compile_options -Wall -Wextra -Wno-unused-parameter 
 -Wno-unused-function -Wno-unused-result -Wno-missing-field-initializers 
 -Wno-unknown-pragmas -Wno-type-limits -Wno-array-bounds -Wno-unknown-pragmas 
 -Wno-strict-overflow -Wno-strict-aliasing -Wno-missing-braces -Wno-uninitialized
--Werror=return-type -Werror)
+-Werror=return-type)
 
+option(PUBLISH_BUILD "check is a publish build on ci" OFF)
 
+if(NOT PUBLISH_BUILD)
+  list(APPEND compile_options -Werror)
+endif()
 
-find_package(Python 3.8 COMPONENTS Interpreter Development.Module REQUIRED)
+add_compile_options(${compile_options})
+
+find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
 
 # set(Boost_INCLUDE_DIR "third_party/boost")
 # list(APPEND CMAKE_PREFIX_PATH ${Boost_INCLUDE_DIR})

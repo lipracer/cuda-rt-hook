@@ -13,8 +13,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
     - name: Set up Python 3.8
       uses: actions/setup-python@v2
@@ -25,12 +26,6 @@ jobs:
       run: |
         sudo apt-get install -y cmake
         pip install --upgrade pip
-
-    - name: Build project
-      run: |
-        pip install -r requirements.txt
-        git submodule update --init --recursive
-        git clean -xfd
 
     - name: Run cpp tests
       run: |
@@ -43,6 +38,12 @@ jobs:
 
     - name: Run python tests
       run: |
+        pip install build==1.0.3
+        pip install wheel==0.37.1
+        pip install ninja==1.11.1.1
+        pip install setuptools==68.0.0
+        pip install pytest
+
         python setup.py sdist bdist_wheel
         ls dist
         pip install --force-reinstall dist/*.whl

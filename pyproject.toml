@@ -1,6 +1,6 @@
 [project]
 name = "cuda-mock"
-version = "0.0.9"
+version = "0.1.0"
 description = "mock cuda runtime api"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -10,5 +10,5 @@ authors = [
 license = { text = "BSD-3-Clause" }
 
 [build-system]
-requires = ["setuptools>=52", "wheel", "scikit-build", "cmake>=3.17", "ninja"]
+requires = ["wheel", "scikit-build", "cmake", "ninja"]
 build-backend = "setuptools.build_meta"
