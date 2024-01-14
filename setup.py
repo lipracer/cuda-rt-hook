@@ -8,6 +8,12 @@ from setuptools.extension import Extension as _Extension
 from glob import glob
 import shutil
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+publish_build = False
+if os.environ.get('PUBLISH_BUILD'):
+    publish_build = True
+
 class CMakeExtension(_Extension):
     def __init__(self, name, sourcedir=''):
         super().__init__(name, sources=[])
@@ -19,26 +25,34 @@ class CMakeBuild(build_ext):
             self.build_extension(ext)
 
     def build_extension(self, ext):
+
+        ninja_args = []
+        install_cmd = 'make'
+        if not publish_build:
+            ninja_args = ['-GNinja']
+            install_cmd = 'ninja'
+
         cmake_args = [
             '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name))),
             '-DPYTHON_EXECUTABLE=' + sys.executable,
-            '-DCMAKE_INSTALL_PREFIX=' + os.path.join(os.path.abspath(os.path.dirname(self.build_lib)), os.path.basename(self.build_lib))
+            '-DCMAKE_INSTALL_PREFIX=' + os.path.join(os.path.abspath(os.path.dirname(self.build_lib)), os.path.basename(self.build_lib)),   
+            # f'-B {os.path.join(script_dir, "build")}',
         ]
+        if publish_build:
+            cmake_args.append('-DPYTHON_INCLUDE_DIR=' + os.environ.get('PYTHON_INCLUDE_DIR'))
+            cmake_args.append('-DPYTHON_LIBRARY=' + os.environ.get('PYTHON_LIBRARY'))
+            cmake_args.append('-DPUBLISH_BUILD=ON')
 
         build_dir = os.path.abspath(os.path.join(self.build_temp, ext.name))
         os.makedirs(build_dir, exist_ok=True)
 
-        ninja_args = [
-            '-GNinja',  # Specify Ninja as the generator
-        ]
-
-        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args + ninja_args, cwd=build_dir)
+        subprocess.check_call(['cmake', f'{script_dir}'] + cmake_args + ninja_args, cwd=build_dir)
         subprocess.check_call(['cmake', '--build', '.'], cwd=build_dir)
-        subprocess.check_call(['ninja', 'install'], cwd=build_dir)
+        subprocess.check_call([f'{install_cmd}', 'install'], cwd=build_dir)
 
 setup(
     name="cuda-mock",
-    version="0.0.9",
+    version="0.1.0",
     author="lipracer",
     author_email="lipracer@gmail.com",
     description="a tools hook some api call at runtime",
@@ -47,7 +61,7 @@ setup(
 
     ext_modules=[CMakeExtension('cuda_mock_impl', sourcedir='.')],
     cmdclass=dict(build_ext=CMakeBuild),
-    package_dir={'': 'src'},
+    package_dir={'': os.path.join(script_dir, 'src') if publish_build else 'src'},
     package_data={'' : ['*']},
     zip_safe=False,
 )
