@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
+#include <csignal>
 #include <deque>
 #include <exception>
 #include <future>
@@ -357,6 +358,14 @@ LogStreamCollection& LogStreamCollection::instance() {
     return *__instance;
 }
 
+void destroy_logger();
+
+void core_dump_handler(int signum) {
+    auto consumer = LogStreamCollection::instance().release_consumer();
+    consumer->sync_pause_loop();
+    exit(signum);
+}
+
 LogStream& LogStream::instance(const LogConfig& cfg) {
     auto sp_cfg = std::make_shared<LogConfig>(cfg);
     std::shared_ptr<LogConsumer> gLogConsumer =
@@ -367,6 +376,12 @@ LogStream& LogStream::instance(const LogConfig& cfg) {
     static thread_local LogStream* __instance =
         new LogStream(gLogConsumer, sp_cfg);
     gLogConsumer->notify();
+
+    {
+        signal(SIGSEGV, core_dump_handler);
+        signal(SIGABRT, core_dump_handler);
+    }
+
     return *__instance;
 }
 
