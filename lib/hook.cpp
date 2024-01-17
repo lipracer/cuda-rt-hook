@@ -239,7 +239,7 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
 
         size_t idx = ELF64_R_SYM(plt->r_info);
         idx = pltTable->dynsym[idx].st_name;
-        LOG(INFO) << pltTable->symbol_table + idx;
+        MLOG(HOOK, INFO) << pltTable->symbol_table + idx;
         if (!installer.isTargetSymbol(pltTable->symbol_table + idx)) {
             continue;
         }
@@ -269,8 +269,9 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         // if (!(prot & PROT_WRITE)) {
         //     mprotect(ALIGN_ADDR(addr), page_size, prot);
         // }
-        LOG(INFO) << "replace:" << pltTable->symbol_table + idx << " with "
-                  << pltTable->symbol_table + idx << " success";
+        MLOG(HOOK, INFO) << "replace:" << pltTable->symbol_table + idx
+                         << " with " << pltTable->symbol_table + idx
+                         << " success";
         if (installer.onSuccess) {
             installer.onSuccess();
         }
@@ -287,12 +288,12 @@ int retrieve_dyn_lib(struct dl_phdr_info* info, size_t info_size, void* table) {
     pltTable.base_addr = reinterpret_cast<const char*>(info->dlpi_addr);
     // pltTable.base_addr = pltTable.base_header_addr;
     ElfW(Dyn*) dyn;
-    LOG(INFO) << "install lib name:" << pltTable.lib_name
-              << " dlpi_addr:" << std::hex
-              << reinterpret_cast<void*>(info->dlpi_addr)
-              << " dlpi_phdr:" << std::hex
-              << reinterpret_cast<const void*>(info->dlpi_phdr)
-              << " info_size:" << info_size;
+    MLOG(HOOK, INFO) << "install lib name:" << pltTable.lib_name
+                     << " dlpi_addr:" << std::hex
+                     << reinterpret_cast<void*>(info->dlpi_addr)
+                     << " dlpi_phdr:" << std::hex
+                     << reinterpret_cast<const void*>(info->dlpi_phdr)
+                     << " info_size:" << info_size;
     for (size_t header_index = 0; header_index < info->dlpi_phnum;
          header_index++) {
         if (info->dlpi_phdr[header_index].p_type == PT_DYNAMIC) {
@@ -370,7 +371,7 @@ void install_hook(const HookInstaller& installer) {
 
     std::vector<PltTable> vecPltTable;
     dl_iterate_phdr(retrieve_dyn_lib, &vecPltTable);
-    LOG(INFO) << "collect plt table size:" << vecPltTable.size();
+    MLOG(HOOK, INFO) << "collect plt table size:" << vecPltTable.size();
     {
         for (auto& pltTable : vecPltTable) {
             (void)install_hooker(&pltTable, installer);

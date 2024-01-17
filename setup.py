@@ -56,6 +56,8 @@ setup(
     author="lipracer",
     author_email="lipracer@gmail.com",
     description="a tools hook some api call at runtime",
+    long_description=open('README.md').read(),
+    long_description_content_type='text/markdown',
 
     url="https://github.com/lipracer/torch-cuda-mock", 
 
