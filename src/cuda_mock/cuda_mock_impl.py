@@ -25,6 +25,20 @@ def internal_install_hook_regex(*args):
 def xpu_initialize():
     return cuda_mock_impl.xpu_initialize()
 
+class HookInstaller:
+    def __init__(self, lib):
+        c_python_object = ctypes.py_object(self)
+        c_string_lib = ctypes.c_char_p(lib.encode('utf-8'))
+        cuda_mock_impl.create_hook_installer(c_python_object, c_string_lib)
+    def is_target_lib(self, name):
+        print(f"HookInstaller is_taget_lib:{name}")
+        assert False, "unimplement"
+
+    def is_target_symbol(self, name):
+        print(f"HookInstaller is_target_symbol:{name}")
+        assert False, "unimplement"
+
+
 str_code = '''
 #include <stddef.h>
 #include <stdio.h>

@@ -4,6 +4,7 @@ add_library(cuda_mock_impl SHARED cuda_mock_impl.cpp)
 target_link_libraries(cuda_mock_impl PRIVATE cuda_mock)
 
 include_directories(PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(cuda_mock_impl PRIVATE fmt::fmt-header-only)
 
 set_target_properties(cuda_mock_impl
     PROPERTIES
