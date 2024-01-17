@@ -21,7 +21,7 @@
 namespace logger {
 
 enum class LogLevel { info = 0, warning, error, fatal, last };
-enum class LogModule { profile = 0x1, trace, last };
+enum class LogModule { profile = 0x1, trace, hook, last };
 
 struct StringLiteralBase {
     constexpr StringLiteralBase(size_t N) {
@@ -362,5 +362,6 @@ void destroy_logger();
 
 #define PROFILE logger::LogModule::profile
 #define TRACE logger::LogModule::trace
+#define HOOK logger::LogModule::hook
 
 #define MLOG(m, level) MLOG_IMPL(m, #m, level)

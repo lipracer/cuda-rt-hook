@@ -311,13 +311,15 @@ struct HookInstallerWrap
         }
         libName = name;
         isTarget = static_cast<DerivedT*>(this)->targetLib(name);
+        LOG(INFO) << name << " isTarget:" << isTarget;
         return isTarget;
     }
 
     bool targetSym(const char* name) {
         symName = name;
-        return static_cast<PreDefineInterface<DerivedT>*>(this)->targetSym(
-            name);
+        bool isSymbol =
+            static_cast<PreDefineInterface<DerivedT>*>(this)->targetSym(name);
+        return isSymbol;
     }
 
     void* newFuncPtr(const hook::OriginalInfo& info) {
@@ -327,6 +329,8 @@ struct HookInstallerWrap
                     uninstall_hook(*info);
                     delete info;
                 }));
+        LOG(INFO) << " replace symbol:" << curSymName() << " in "
+                  << curLibName();
         return static_cast<PreDefineInterface<DerivedT>*>(this)->newFuncPtr(
             info);
     }

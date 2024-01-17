@@ -375,7 +375,9 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
     : logConsumer_(logConsumer), cfg_(cfg) {
     static std::unordered_map<std::string, logger::LogModule> ModuleMap = {
         {"PROFILE", logger::LogModule::profile},
-        {"TRACE", logger::LogModule::trace}};
+        {"TRACE", logger::LogModule::trace},
+        {"HOOK", logger::LogModule::hook},
+    };
     auto modules = hook::get_env_value<
         std::vector<std::pair<std::string, logger::LogLevel>>>("LOG_LEVEL");
     std::fill(std::begin(module_set_), std::end(module_set_),

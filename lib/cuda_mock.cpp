@@ -149,7 +149,16 @@ struct DHRegexHook : public hook::HookInstallerWrap<DHRegexHook> {
             *reinterpret_cast<void**>(org_addr) = info.oldFuncPtr;
         } else {
         }
-        return dlsym(dynamic_obj_handle_, strs_[2].c_str());
+        void* new_func_ptr = nullptr;
+        if (strs_.back().empty()) {
+            LOG(INFO) << "find lib:" << strs_[3] << " symbol:" << strs_[2];
+            new_func_ptr = dlsym(dynamic_obj_handle_, strs_[2].c_str());
+        } else {
+            LOG(INFO) << "find lib:" << strs_[3] << " symbol:" << strs_.back();
+            new_func_ptr = dlsym(dynamic_obj_handle_, strs_.back().c_str());
+        }
+        CHECK(new_func_ptr, "new func ptr is nullptr");
+        return new_func_ptr;
     }
     void onSuccess() {}
 
