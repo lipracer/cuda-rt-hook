@@ -51,6 +51,25 @@
     export HOOK_DISABLE_TRACE='xpuMemcpy=0,xpuSetDevice=0'
     ```
 
+### 实现自定义hook函数  
+- 实现自定义hook installer例子:
+    ```python
+    class PythonHookInstaller(cuda_mock.HookInstaller):
+        def is_target_lib(self, name):
+            return name.find("libcuda_mock_impl.so") != -1
+        def is_target_symbol(self, name):
+            return name.find("malloc") != -1
+    lib = cuda_mock.dynamic_obj(cpp_code, True).appen_compile_opts('-g').compile().get_lib()
+    installer = PythonHookInstaller(lib)
+    ```
+
+- 实现hook回调接口 `PythonHookInstaller`  
+- 构造函数需要传入自定义hook函数的库路径（绝对路径 并且 传入库中必须存在与要替换的函数名字以及类型一致的函数 在hook发生过程中，将会把原函数的地址写入以__origin_为开头目标symbol接口的变量中，方便用户拿到原始函数地址 参考:test/py_test/test_import_mock.py:15 处定义）
+- is_target_lib 是否是要hook的目标函数被调用的library
+- is_target_symbol 是否是要hook的目标函数名字（上面接口返回True才回调到这个接口）
+
+
+
 ### example  
 - ```python test/test_import_mock.py```
 
