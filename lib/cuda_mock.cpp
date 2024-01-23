@@ -235,7 +235,8 @@ struct DHPythonHook : public hook::HookInstallerWrap<DHPythonHook> {
         }
         void* new_func_ptr = dlsym(dynamic_obj_handle_, curSymName());
 
-        CHECK(new_func_ptr, "new func ptr is nullptr");
+        CHECK(new_func_ptr, "new func ptr is nullptr curSymName:{}",
+              curSymName());
         return new_func_ptr;
     }
     void onSuccess() {}
