@@ -38,6 +38,9 @@ class HookInstaller:
         print(f"HookInstaller is_target_symbol:{name}")
         assert False, "unimplement"
 
+    def new_symbol_name(self, name):
+        return name
+
 
 str_code = '''
 #include <stddef.h>
