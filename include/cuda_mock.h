@@ -41,8 +41,9 @@ void dh_set_new_symbol_define_library(HookContext_t ctx, HookString_t str,
 void dh_set_new_symbol_name(HookContext_t ctx, HookString_t str, bool regex);
 
 void dh_create_py_hook_installer(
-    const std::function<bool(const char* name)>& isTarget,
-    const std::function<bool(const char* name)>& isSymbol, HookString_t lib);
+    const std::function<bool(HookString_t name)>& isTarget,
+    const std::function<bool(HookString_t name)>& isSymbol, HookString_t lib,
+    const std::function<HookString_t(HookString_t name)>& newSymbol);
 }
 
 #endif

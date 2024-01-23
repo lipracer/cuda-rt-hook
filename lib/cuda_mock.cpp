@@ -211,10 +211,13 @@ void dh_internal_install_hook_regex(const char* srcLib, const char* targetLib,
 }
 
 struct DHPythonHook : public hook::HookInstallerWrap<DHPythonHook> {
-    DHPythonHook(const std::function<bool(const char* name)>& isTarget,
-                 const std::function<bool(const char* name)>& isSymbol,
-                 const char* lib)
-        : isTarget_(isTarget), isSymbol_(isSymbol) {
+    DHPythonHook(
+        const std::function<bool(HookString_t name)>& isTarget,
+        const std::function<bool(HookString_t name)>& isSymbol,
+        HookString_t lib,
+        const std::function<HookString_t(HookString_t name)>& newSymbol)
+        : isTarget_(isTarget), isSymbol_(isSymbol), newSymbol_(newSymbol) {
+        LOG(INFO) << "DHPythonHook new lib name:" << lib;
         dynamic_obj_handle_ = dlopen(lib, RTLD_LAZY);
         if (!dynamic_obj_handle_) {
             LOG(FATAL) << "can't open lib:" << lib;
@@ -227,16 +230,20 @@ struct DHPythonHook : public hook::HookInstallerWrap<DHPythonHook> {
     void* newFuncPtr(const hook::OriginalInfo& info) {
         std::string org_symbol = "__origin_" + std::string(curSymName());
         auto org_addr = dlsym(dynamic_obj_handle_, org_symbol.c_str());
-        LOG(INFO) << "set origin function name:" << org_symbol
-                  << " org_addr:" << org_addr;
+
         if (org_addr) {
             *reinterpret_cast<void**>(org_addr) = info.oldFuncPtr;
         } else {
         }
-        void* new_func_ptr = dlsym(dynamic_obj_handle_, curSymName());
-
-        CHECK(new_func_ptr, "new func ptr is nullptr curSymName:{}",
-              curSymName());
+        auto newSymName = newSymbol_(curSymName());
+        void* new_func_ptr = dlsym(dynamic_obj_handle_, newSymName);
+        LOG(INFO) << "set origin function name:" << org_symbol
+                  << " org_addr:" << info.oldFuncPtr
+                  << " newSymName:" << newSymName
+                  << " new function address:" << new_func_ptr;
+        CHECK(new_func_ptr,
+              "new func ptr is nullptr curSymName:{} newSymName:{}",
+              curSymName(), newSymName);
         return new_func_ptr;
     }
     void onSuccess() {}
@@ -248,15 +255,18 @@ struct DHPythonHook : public hook::HookInstallerWrap<DHPythonHook> {
     }
 
    private:
-    std::function<bool(const char* name)> isTarget_;
-    std::function<bool(const char* name)> isSymbol_;
+    std::function<bool(HookString_t name)> isTarget_;
+    std::function<bool(HookString_t name)> isSymbol_;
+    std::function<HookString_t(HookString_t name)> newSymbol_;
     void* dynamic_obj_handle_{nullptr};
 };
 
 void dh_create_py_hook_installer(
-    const std::function<bool(const char* name)>& isTarget,
-    const std::function<bool(const char* name)>& isSymbol, const char* lib) {
-    auto installer = std::make_shared<DHPythonHook>(isTarget, isSymbol, lib);
+    const std::function<bool(HookString_t name)>& isTarget,
+    const std::function<bool(HookString_t name)>& isSymbol, HookString_t lib,
+    const std::function<HookString_t(HookString_t name)>& newSymbol) {
+    auto installer =
+        std::make_shared<DHPythonHook>(isTarget, isSymbol, lib, newSymbol);
     installer->install();
 }
 
