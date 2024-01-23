@@ -262,8 +262,11 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         originalInfo.pltTablePtr = reinterpret_cast<void**>(addr);
         originalInfo.oldFuncPtr =
             reinterpret_cast<void*>(*reinterpret_cast<size_t*>(addr));
+        auto new_func_ptr = installer.newFuncPtr(originalInfo);
         *reinterpret_cast<size_t*>(addr) =
-            reinterpret_cast<size_t>(installer.newFuncPtr(originalInfo));
+            reinterpret_cast<size_t>(new_func_ptr);
+        LOG(INFO) << "store " << new_func_ptr << " to " << addr
+                  << " original value:" << *reinterpret_cast<void**>(addr);
         // we will not recover the address protect
         // TODO: move this to uninstall function
         // if (!(prot & PROT_WRITE)) {
