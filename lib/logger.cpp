@@ -1,14 +1,18 @@
 #include "logger/logger.h"
 
 #include <string.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <ctime>
 #include <deque>
 #include <exception>
 #include <future>
+#include <iomanip>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -50,6 +54,28 @@ inline size_t alignUp(size_t x, size_t align) {
 inline size_t alignStringSize(size_t size) {
     return alignUp(size + 1 + SimpleStringRef::headerSize(),
                    SimpleStringRef::alignSize());
+}
+
+std::string getFileName(const std::string& path) {
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    ss << path;
+    if (path.back() != '/') {
+        ss << '/';
+    }
+    tm structTime;
+    ::localtime_r(&in_time_t, &structTime);
+    ss << "hook-";
+    ss << getpid() << '-' << std::this_thread::get_id() << "-"
+       << std::put_time(&structTime, "%Y-%m-%d-%X") << ".log";
+    auto result = ss.str();
+    for (auto& it : result) {
+        if (it == ':') {
+            it = '-';
+        }
+    }
+    return result;
 }
 
 SimpleStringRef::SimpleStringRef(const char* str, size_t size) : size_(size) {
@@ -205,6 +231,11 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
           exit_(false),
           cfg_(cfg) {
         tmpBuffer_.resize(256);
+        auto path = hook::get_env_value<std::string>("LOG_OUTPUT_PATH");
+        if (!path.empty()) {
+            path = getFileName(path);
+            cfg_->stream = fopen(path.c_str(), "wt+");
+        }
         if (cfg->mode == LogConfig::kAsync) {
             // future_ = promise_.get_future();
             th_ = std::make_unique<std::thread>(&LogConsumer::print, this);
@@ -293,12 +324,15 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
         if (cfg_->mode == LogConfig::kAsync) {
             if (th_ && th_->joinable()) th_->join();
         }
+        flush_queue();
+        fflush(cfg_->stream);
     }
 
     void report_fatal() {
         sync_pause_loop();
         // write nullptr statement maybe be motion to front
-        (void)malloc(std::numeric_limits<size_t>::max());
+        int n = 0;
+        *reinterpret_cast<int*>(n) = 0;
     }
 
     void flush_queue() {
