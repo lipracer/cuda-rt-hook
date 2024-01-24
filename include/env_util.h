@@ -74,8 +74,9 @@ struct str2value_impl<std::vector<V>> {
 };
 
 template <typename T>
-typename std::enable_if<std::is_trivial<T>::value, T>::type get_env_value(
-    const char* str) {
+T get_env_value(const char* str,
+                std::__void_t<decltype(std::declval<std::istringstream>() >>
+                                       std::declval<T&>())>* = nullptr) {
     auto env_value_str = std::getenv(str);
     if (!env_value_str) {
         return {};
