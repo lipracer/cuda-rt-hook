@@ -64,9 +64,11 @@
     ```
 
 - 实现hook回调接口 `PythonHookInstaller`  
-- 构造函数需要传入自定义hook函数的库路径（绝对路径 并且 传入库中必须存在与要替换的函数名字以及类型一致的函数 在hook发生过程中，将会把原函数的地址写入以__origin_为开头目标symbol接口的变量中，方便用户拿到原始函数地址 参考:test/py_test/test_import_mock.py:15 处定义）
-- is_target_lib 是否是要hook的目标函数被调用的library
-- is_target_symbol 是否是要hook的目标函数名字（上面接口返回True才回调到这个接口）
+- 构造函数需要传入自定义hook函数的库路径（绝对路径 并且 传入库中必须存在与要替换的函数名字以及类型一致的函数 在hook发生过程中，将会把原函数的地址写入以`__origin_`为开头目标`symbol`接口的变量中，方便用户拿到原始函数地址 参考:`test/py_test/test_import_mock.py:15`处定义）
+- `is_target_lib` 是否是要hook的目标函数被调用的library
+- `is_target_symbol` 是否是要hook的目标函数名字（上面接口返回True才回调到这个接口）
+- `new_symbol_name` 构造函数中传入共享库中的新的用于替换的函数名字，参数`name`：当前准备替换的函数名字
+- `dynamic_obj` 可以运行时编译c++ code，支持引用所有模块：`logger`、`statistics`
 
 
 
