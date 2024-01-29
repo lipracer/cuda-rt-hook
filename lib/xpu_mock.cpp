@@ -166,7 +166,8 @@ int XpuRuntimeWrapApi::xpuCurrentDeviceId(int* devIdPtr) {
     return XpuRuntimeWrapApi::instance().raw_xpu_current_device_(devIdPtr);
 }
 
-struct XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
+class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
+public:
     bool targetLib(const char* name) {
         return !strstr(name, "libxpurt.so.1") && !strstr(name, "libxpurt.so");
     }
