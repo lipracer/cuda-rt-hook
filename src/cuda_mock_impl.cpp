@@ -55,6 +55,8 @@ HOOK_API void internal_install_hook_regex(HookString_t srcLib,
 
 HOOK_API void xpu_initialize() { xpu_dh_initialize(); }
 
+HOOK_API void patch_runtime() { dh_patch_runtime(); }
+
 #define CHECK_PYTHON_OBG()
 
 HOOK_API bool call_python_method_bool(PyObject* py_instance, HookString_t name,

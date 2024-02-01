@@ -25,6 +25,9 @@ def internal_install_hook_regex(*args):
 def xpu_initialize():
     return cuda_mock_impl.xpu_initialize()
 
+def patch_runtime():
+    return cuda_mock_impl.patch_runtime()
+
 class HookInstaller:
     def __init__(self, lib):
         c_python_object = ctypes.py_object(self)

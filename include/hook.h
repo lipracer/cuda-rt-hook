@@ -296,13 +296,18 @@ struct HookInstallerWrap
       PreDefineInterface<DerivedT> {
     // NB: c++ std::shared_ptr and enable_shared_from_this
     // shared_from_this can't call in ctor
-    void install() { install_hook(buildInstaller()); }
+    void install() {
+        LOG(INFO) << "install hooker:" << typeid(DerivedT).name();
+        install_hook(buildInstaller());
+    }
 
     ~HookInstallerWrap() {
         for (auto& handle : handle_map_) {
             LOG(WARN) << "close lib:" << handle.first;
             dlclose(handle.second);
         }
+        LOG(INFO) << "HookInstallerWrap<" << typeid(DerivedT).name()
+                  << "> complete!";
     }
 
     bool targetLib(const char* name) {

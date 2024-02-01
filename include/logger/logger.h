@@ -9,6 +9,11 @@
 #include <sstream>
 #include <thread>
 
+// #define DEBUG_LOGER
+#ifdef DEBUG_LOGER
+#include <iostream>
+#endif
+
 #include "fmt/core.h"
 
 #ifndef LOGGER_LIKELY
