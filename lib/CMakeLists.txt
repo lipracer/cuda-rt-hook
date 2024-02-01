@@ -22,9 +22,15 @@ add_library(cuda_mock STATIC
     statistic.cpp
 )
 
+add_library(xpu_mock_improve SHARED xpu_mock_improve.cpp)
+target_include_directories(xpu_mock_improve PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}../include)
+set_target_properties(xpu_mock_improve
+    PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_INSTALL_PREFIX}/cuda_mock
+)
 
 target_include_directories(cuda_mock PUBLIC ${Python_INCLUDE_DIRS})
-target_link_libraries(cuda_mock PRIVATE ${PYTHON_LIBRARIES})
+target_link_libraries(cuda_mock PRIVATE ${PYTHON_LIBRARIES} xpu_mock_improve)
 
 
 set_target_properties(cuda_mock PROPERTIES POSITION_INDEPENDENT_CODE ON)

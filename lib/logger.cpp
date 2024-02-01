@@ -316,7 +316,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
                 // std::this_thread::yield();
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
-        } while (exit_.load());
+        } while (!exit_.load());
     }
 
     void sync_pause_loop() {
