@@ -16,11 +16,17 @@ cpp_code = '''
 
 extern "C" {
 
+void * __origin_strlen = nullptr;
 void * __origin_malloc = nullptr;
 
 EXPORT void* my_malloc(size_t s) {
-    std::cout << "run into hook my_malloc:" << reinterpret_cast<void*>(&my_malloc) << " __origin_malloc:" << __origin_malloc << std::endl;
+    puts("run into hook my_malloc");
     return reinterpret_cast<decltype(&my_malloc)>(__origin_malloc)(s);
+}
+
+EXPORT int new_strlen(const char* str) {
+    puts("run into hook new_strlen");
+    return reinterpret_cast<decltype(&strlen)>(__origin_strlen)(str);
 }
 
 }
@@ -29,7 +35,7 @@ EXPORT void* my_malloc(size_t s) {
 
 def test_hook_malloc():
     lib = cuda_mock.dynamic_obj(cpp_code, True).appen_compile_opts('-g').compile().get_lib()
-    cuda_mock.internal_install_hook_regex(r"glibc\.so\..*", r"[^(glibc\.so)]", "malloc", str(lib), "my_malloc")
+    cuda_mock.internal_install_hook_regex(r"glibc\.so\..*", r"[^(glibc\.so)]", "strlen", str(lib), "new_strlen")
 
 
 class PythonHookInstaller(cuda_mock.HookInstaller):
@@ -39,7 +45,10 @@ class PythonHookInstaller(cuda_mock.HookInstaller):
 
     def is_target_symbol(self, name):
         # print(name)
-        return name.find("malloc") != -1
+        return name.find("strlen") != -1
+
+    def new_symbol_name(self, name):
+        return "new_" + name
 
 def test_python_hook():
     lib = cuda_mock.dynamic_obj(cpp_code, True).appen_compile_opts('-g').compile().get_lib()

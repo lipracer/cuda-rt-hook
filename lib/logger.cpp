@@ -272,7 +272,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
         }
         // increase the ref count avoid other thread release self
         auto self = this->shared_from_this();
-        while (!exit_ || buf_.size()) {
+        do {
             if (buf_.empty()) {
                 goto LOOP_END;
             } else {
@@ -316,7 +316,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
                 // std::this_thread::yield();
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
-        }
+        } while (exit_.load());
     }
 
     void sync_pause_loop() {
@@ -453,6 +453,10 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
         level_ = static_cast<LogLevel>(default_lvl_iter -
                                        std::begin(gLoggerLevelStringSet()));
     }
+#ifdef DEBUG_LOGER
+    std::cout << "parse level_:" << static_cast<int>(level_) << std::endl;
+#endif
+
     LogStreamCollection::instance().collect(this);
 }
 

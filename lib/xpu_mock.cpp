@@ -15,8 +15,8 @@
 #include "backtrace.h"
 #include "hook.h"
 #include "logger/logger.h"
-#include "support.h"
 #include "statistic.h"
+#include "support.h"
 
 namespace {
 
@@ -174,25 +174,64 @@ struct XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
     hook::HookFeature symbols[6] = {
         // malloc
         hook::HookFeature("xpu_malloc", &XpuRuntimeWrapApi::xpuMalloc,
-                    &XpuRuntimeWrapApi::instance().raw_xpu_malloc_),
+                          &XpuRuntimeWrapApi::instance().raw_xpu_malloc_),
         // free
         hook::HookFeature("xpu_free", &XpuRuntimeWrapApi::xpuFree,
-                    &XpuRuntimeWrapApi::instance().raw_xpu_free_),
+                          &XpuRuntimeWrapApi::instance().raw_xpu_free_),
         // get device id
-        hook::HookFeature("xpu_current_device",
-                    &XpuRuntimeWrapApi::instance().xpuCurrentDeviceId,
-                    &XpuRuntimeWrapApi::instance().raw_xpu_current_device_),
+        hook::HookFeature(
+            "xpu_current_device",
+            &XpuRuntimeWrapApi::instance().xpuCurrentDeviceId,
+            &XpuRuntimeWrapApi::instance().raw_xpu_current_device_),
         // sync device
         hook::HookFeature("xpu_wait", &XpuRuntimeWrapApi::xpuWait,
-                    &XpuRuntimeWrapApi::instance().raw_xpu_wait_),
+                          &XpuRuntimeWrapApi::instance().raw_xpu_wait_),
         // memcpy
         hook::HookFeature("xpu_memcpy", &XpuRuntimeWrapApi::xpuMemcpy,
-                    &XpuRuntimeWrapApi::instance().raw_xpu_memcpy_),
+                          &XpuRuntimeWrapApi::instance().raw_xpu_memcpy_),
         // set_device
-        hook::HookFeature("xpu_set_device", &XpuRuntimeWrapApi::xpuSetDevice,
-                    &XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_)};
+        hook::HookFeature(
+            "xpu_set_device", &XpuRuntimeWrapApi::xpuSetDevice,
+            &XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_)};
 
     void onSuccess() { LOG(WARN) << "install " << curSymName() << " success"; }
+};
+
+struct PatchRuntimeHook : public hook::HookInstallerWrap<PatchRuntimeHook> {
+    static int unifySetDevice(int devId) {
+        LOG(INFO) << "devId:" << devId;
+        auto ret = PatchRuntimeHook::instance()->xpu_set_device_(devId);
+        CHECK_EQ(ret, 0, "xpu_set_device fail with result:{}", ret);
+        return PatchRuntimeHook::instance()->cuda_set_device_(devId);
+    }
+
+    using SetDevFuncType_t = decltype(&unifySetDevice);
+
+    bool targetLib(const char* name) { return !strstr(name, "libcudart.so"); }
+
+    bool targetSym(const char* name) {
+        return !strcmp(name, "cudaSetDevice") ||
+               !strcmp(name, "xpu_set_device");
+    }
+
+    void* newFuncPtr(const hook::OriginalInfo& info) {
+        if (!xpu_set_device_ && !strstr(curLibName(), "libxpurt.so")) {
+            xpu_set_device_ =
+                reinterpret_cast<SetDevFuncType_t>(info.oldFuncPtr);
+            return info.oldFuncPtr;
+        }
+        cuda_set_device_ = reinterpret_cast<SetDevFuncType_t>(info.oldFuncPtr);
+        return reinterpret_cast<void*>(&unifySetDevice);
+    }
+    void onSuccess() {}
+
+    static PatchRuntimeHook* instance() {
+        static auto install_wrap = std::make_shared<PatchRuntimeHook>();
+        return install_wrap.get();
+    }
+
+    SetDevFuncType_t cuda_set_device_{nullptr};
+    SetDevFuncType_t xpu_set_device_{nullptr};
 };
 
 }  // namespace
@@ -202,6 +241,7 @@ extern "C" {
 void xpu_dh_initialize() {
     static auto install_wrap = std::make_shared<XpuRuntimeApiHook>();
     install_wrap->install();
-    LOG(INFO) << "xpu_dh_initialize complete!";
 }
+
+void dh_patch_runtime() { PatchRuntimeHook::instance()->install(); }
 }
