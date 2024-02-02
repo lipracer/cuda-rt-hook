@@ -22,8 +22,8 @@ extern "C" {
 void dh_initialize() {
     hook::init_all_global_variables();
     LOG(INFO) << "initialize";
-    hook::HookInstaller hookInstaller = trace::getHookInstaller();
-    hook::install_hook(hookInstaller);
+    // hook::HookInstaller hookInstaller = trace::getHookInstaller();
+    // hook::install_hook(hookInstaller);
     // hook::install_hook();
 }
 
@@ -218,7 +218,7 @@ struct DHPythonHook : public hook::HookInstallerWrap<DHPythonHook> {
         const std::function<HookString_t(HookString_t name)>& newSymbol)
         : isTarget_(isTarget), isSymbol_(isSymbol), newSymbol_(newSymbol) {
         LOG(INFO) << "DHPythonHook new lib name:" << lib;
-        dynamic_obj_handle_ = dlopen(lib, RTLD_LAZY);
+        dynamic_obj_handle_ = dlopen(lib, RTLD_NOW | RTLD_LOCAL);
         if (!dynamic_obj_handle_) {
             LOG(FATAL) << "can't open lib:" << lib;
         }
@@ -269,6 +269,10 @@ void dh_create_py_hook_installer(
         std::make_shared<DHPythonHook>(isTarget, isSymbol, lib, newSymbol);
     installer->install();
 }
+
+void DhLibraryLoader() __attribute__((constructor));
+
+void DhLibraryLoader() { logger::initLogger(); }
 
 void DhLibraryUnloader() __attribute__((destructor));
 

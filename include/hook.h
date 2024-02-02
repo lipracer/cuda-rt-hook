@@ -14,6 +14,8 @@
 #include "GlobalVarMgr.h"
 #include "logger/logger.h"
 
+#define HOOK_API __attribute__((__visibility__("default")))
+
 namespace hook {
 /**
  * @brief install all hook function to replace cuda runtime api

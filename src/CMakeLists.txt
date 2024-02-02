@@ -10,4 +10,7 @@ set_target_properties(cuda_mock_impl
     PROPERTIES
     # LINK_OPTIONS "-static-libstdc++"
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_INSTALL_PREFIX}/cuda_mock
+    BUILD_WITH_INSTALL_RPATH OFF
+    BUILD_RPATH "\$ORIGIN"
+    INSTALL_RPATH "\$ORIGIN"
 )
