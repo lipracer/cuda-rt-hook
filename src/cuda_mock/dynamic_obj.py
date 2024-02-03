@@ -6,7 +6,8 @@ def exec_shell(cmd, print_result = False):
     if print_result:
         for line in lines:
             print(line.strip())
-    return ''.join(lines)
+    ret_str = ''.join(lines)
+    return ret_str.strip()
 
 GCC_CXX_COMPILER = "g++"
 CLANG_CXX_COMPILER = "clang++"
@@ -66,3 +67,13 @@ class dynamic_obj:
     
     def get_lib(self):
         return self.lib_file_name
+
+def patch_mock_improve(file_name):
+    lib = dynamic_obj(file_name).compile().get_lib()
+    py_path = exec_shell('pip show cuda_mock')
+    py_path = py_path.split('\n')
+    py_path = list(filter(lambda it: it.find('Location:') != -1, py_path))[0]
+    py_path = py_path.split(':')[1].strip()
+    dst_path = os.path.join(py_path, 'cuda_mock', 'libxpu_mock_improve.so')
+    command = f'mv {lib} {dst_path}'
+    exec_shell(command)
