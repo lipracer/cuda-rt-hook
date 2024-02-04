@@ -55,7 +55,7 @@ def repaired_path(name):
 
 setup(
     name="cuda-mock",
-    version="0.1.0",
+    version="0.1.1",
     author="lipracer",
     author_email="lipracer@gmail.com",
     description="a tools hook some api call at runtime",
