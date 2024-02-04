@@ -21,7 +21,6 @@ extern "C" {
 
 void dh_initialize() {
     hook::init_all_global_variables();
-    LOG(INFO) << "initialize";
     // hook::HookInstaller hookInstaller = trace::getHookInstaller();
     // hook::install_hook(hookInstaller);
     // hook::install_hook();

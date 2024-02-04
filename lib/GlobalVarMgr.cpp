@@ -38,7 +38,6 @@ class GlobalValRegistry {
 };
 
 void init_all_global_variables() {
-    LOG(INFO) << "call:" << __func__;
     for (auto& func : GlobalValRegistry::instance()) {
         auto obj = func.second.rfunc();
         func.second.obj = obj;
@@ -47,7 +46,6 @@ void init_all_global_variables() {
 
 void register_global_variable(int priority, const registry_func& rfunc,
                               const destroy_func& dfunc) {
-    LOG(INFO) << "call:" << __func__;
     GlobalValRegistry::instance().insert(
         priority, GlobalValRegistry::FuncDesc{.rfunc = rfunc, .dfunc = dfunc});
 }

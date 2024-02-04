@@ -111,6 +111,14 @@ class LogStream {
 
     void log_fatal();
 
+    auto time_duration() {
+        return std::to_string(
+                   std::chrono::duration_cast<std::chrono::microseconds>(
+                       std::chrono::steady_clock::now() - start_point_)
+                       .count()) +
+               "us";
+    }
+
    private:
     LogLevel level_ = LogLevel::warning;
     std::stringstream ss_;
@@ -118,6 +126,8 @@ class LogStream {
     std::shared_ptr<LogConfig> cfg_;
     LogLevel module_set_[static_cast<size_t>(LogModule::last)] = {
         LogLevel::info};
+    std::chrono::steady_clock::time_point start_point_{
+        std::chrono::steady_clock::now()};
 };
 
 #define LOG_CONDITATION(level)    \
@@ -319,22 +329,23 @@ void destroy_logger();
 #define ERROR logger::LogLevel::error
 #define FATAL logger::LogLevel::fatal
 
-#define LOG_IMPL(level)                                                      \
-    !LOG_CONDITATION(level)                                                  \
-        ? void(0)                                                            \
-        : logger::StreamPlaceHolder() <                                      \
-              logger::LogWrapper(level)                                      \
-                  << "[" << logger::makeStringLiteral(__FILE__).simpleFile() \
-                  << ":" << std::dec << __LINE__ << "]"
+#define LOGGER_COMMON_ITEMS                                             \
+    "[time:" << logger::LogStream::instance().time_duration() << "]["   \
+             << logger::makeStringLiteral(__FILE__).simpleFile() << ":" \
+             << std::dec << __LINE__ << "]"
 
-#define MLOG_IMPL(m, str_m, level)                                           \
-    !MLOG_CONDITATION(m, level)                                              \
-        ? void(0)                                                            \
-        : logger::StreamPlaceHolder() <                                      \
-              logger::LogWrapper(level, true)                                \
-                  << "[" << logger::makeStringLiteral(__FILE__).simpleFile() \
-                  << ":" << std::dec << __LINE__ << "]"                      \
-                  << "[" << str_m << "]"
+#define LOG_IMPL(level)                                           \
+    !LOG_CONDITATION(level)                                       \
+        ? void(0)                                                 \
+        : logger::StreamPlaceHolder() < logger::LogWrapper(level) \
+                                            << LOGGER_COMMON_ITEMS
+
+#define MLOG_IMPL(m, str_m, level)                                        \
+    !MLOG_CONDITATION(m, level)                                           \
+        ? void(0)                                                         \
+        : logger::StreamPlaceHolder() < logger::LogWrapper(level, true)   \
+                                            << LOGGER_COMMON_ITEMS << "[" \
+                                            << str_m << "]"
 
 #define LOG(level) LOG_IMPL(static_cast<int>(level))
 

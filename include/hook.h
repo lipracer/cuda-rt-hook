@@ -120,10 +120,7 @@ class HookRuntimeContext {
 
     HookRuntimeContext() = default;
     ~HookRuntimeContext() { dump(); }
-    static HookRuntimeContext& instance() {
-        static HookRuntimeContext __instance;
-        return __instance;
-    }
+    static HookRuntimeContext& instance();
 
     template <typename... Args>
     vec_type::iterator insert(
@@ -299,7 +296,7 @@ struct HookInstallerWrap
     // NB: c++ std::shared_ptr and enable_shared_from_this
     // shared_from_this can't call in ctor
     void install() {
-        LOG(INFO) << "install hooker:" << typeid(DerivedT).name();
+        MLOG(HOOK, INFO) << "install hooker:" << typeid(DerivedT).name();
         install_hook(buildInstaller());
     }
 
@@ -308,8 +305,8 @@ struct HookInstallerWrap
             LOG(WARN) << "close lib:" << handle.first;
             dlclose(handle.second);
         }
-        LOG(INFO) << "HookInstallerWrap<" << typeid(DerivedT).name()
-                  << "> complete!";
+        MLOG(HOOK, INFO) << "HookInstallerWrap<" << typeid(DerivedT).name()
+                         << "> complete!";
     }
 
     bool targetLib(const char* name) {
@@ -318,7 +315,7 @@ struct HookInstallerWrap
         }
         libName = name;
         isTarget = static_cast<DerivedT*>(this)->targetLib(name);
-        LOG(INFO) << name << " isTarget:" << isTarget;
+        MLOG(HOOK, INFO) << name << " isTarget:" << isTarget;
         return isTarget;
     }
 
@@ -336,8 +333,8 @@ struct HookInstallerWrap
                     uninstall_hook(*info);
                     delete info;
                 }));
-        LOG(INFO) << " replace symbol:" << curSymName() << " in "
-                  << curLibName();
+        MLOG(HOOK, INFO) << " replace symbol:" << curSymName() << " in "
+                         << curLibName();
         return static_cast<PreDefineInterface<DerivedT>*>(this)->newFuncPtr(
             info);
     }
