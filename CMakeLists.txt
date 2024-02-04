@@ -24,6 +24,9 @@ add_compile_options(${compile_options})
 
 find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
 
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
+find_package(Options REQUIRED)
+
 # set(Boost_INCLUDE_DIR "third_party/boost")
 # list(APPEND CMAKE_PREFIX_PATH ${Boost_INCLUDE_DIR})
 # find_package( Boost 1.82.0 COMPONENTS program_options REQUIRED )
@@ -48,6 +51,8 @@ set(DST_DIRECTORY_TO_INSTALL ${CMAKE_INSTALL_PREFIX}/cuda_mock)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include DESTINATION ${DST_DIRECTORY_TO_INSTALL})
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt/include DESTINATION ${DST_DIRECTORY_TO_INSTALL})
 
+if (ENABLE_BUILD_WITH_GTEST)
+
 ################################
 # GTest
 ################################
@@ -63,3 +68,5 @@ target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_pa
 target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt/include)
 target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/lib)
 target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+endif()

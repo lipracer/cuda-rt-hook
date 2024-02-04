@@ -35,7 +35,8 @@ class CMakeBuild(build_ext):
         cmake_args = [
             '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name))),
             '-DPYTHON_EXECUTABLE=' + sys.executable,
-            '-DCMAKE_INSTALL_PREFIX=' + os.path.join(os.path.abspath(os.path.dirname(self.build_lib)), os.path.basename(self.build_lib)),   
+            '-DCMAKE_INSTALL_PREFIX=' + os.path.join(os.path.abspath(os.path.dirname(self.build_lib)), os.path.basename(self.build_lib)),
+            '-DENABLE_BUILD_WITH_GTEST=OFF',
             # f'-B {os.path.join(script_dir, "build")}',
         ]
         if publish_build:
