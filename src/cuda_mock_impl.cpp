@@ -53,7 +53,9 @@ HOOK_API void internal_install_hook_regex(HookString_t srcLib,
                                    hookerSymbolName);
 }
 
-HOOK_API void xpu_initialize() { xpu_dh_initialize(); }
+HOOK_API void xpu_initialize(bool use_improve) {
+    xpu_dh_initialize(use_improve);
+}
 
 HOOK_API void patch_runtime() { dh_patch_runtime(); }
 

@@ -245,8 +245,8 @@ extern "C" {
 
 extern bool use_xpu_mock_improve();
 
-void xpu_dh_initialize() {
-    if (use_xpu_mock_improve()) {
+void xpu_dh_initialize(bool use_improve) {
+    if (use_improve && use_xpu_mock_improve()) {
         return;
     }
     static auto install_wrap = std::make_shared<XpuRuntimeApiHook>();

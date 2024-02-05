@@ -22,8 +22,8 @@ def internal_install_hook_regex(*args):
     new_args = [ctypes.c_char_p(arg.encode('utf-8')) for arg in args]
     return cuda_mock_impl.internal_install_hook_regex(*new_args)
 
-def xpu_initialize():
-    return cuda_mock_impl.xpu_initialize()
+def xpu_initialize(use_improve=False):
+    return cuda_mock_impl.xpu_initialize(ctypes.c_bool(use_improve))
 
 def patch_runtime():
     return cuda_mock_impl.patch_runtime()
