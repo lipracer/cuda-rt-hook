@@ -1,5 +1,13 @@
 
 #include <Python.h>
+// #include <pybind11/complex.h>
+// #include <pybind11/functional.h>
+// #include <pybind11/pybind11.h>
+// #include <pybind11/stl.h>
+
+#include <functional>
+#include <iostream>
+#include <memory>
 
 #include "cuda_mock.h"
 #include "hook.h"
@@ -130,4 +138,73 @@ HOOK_API void create_hook_installer(PyObject* py_instance, HookString_t lib) {
     };
     dh_create_py_hook_installer(is_target, is_symbol, lib, new_symbol);
 }
+
+HOOK_API void py_log(HookString_t str) { MLOG(PYTHON, INFO) << str; }
+
+HOOK_API void start_capture() { dh_start_capture_rt_print(); }
+HOOK_API void end_capture(PyObject* py_instance) {
+    auto cpp_string = dh_end_capture_rt_print();
+    LOG(INFO) << cpp_string;
+
+    Py_Initialize();
+    CHECK(Py_IsInitialized(), "python interpreter uninitialized");
+
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    // https://stackoverflow.com/questions/1796510/accessing-a-python-traceback-from-the-c-api
+    // PyThreadState* tstate = PyThreadState_GET();
+
+    PyObject* py_method = PyObject_GetAttrString(py_instance, "end_callback");
+    CHECK(py_method, "empty py_method");
+    PyObject* py_value =
+        PyTuple_Pack(1, PyUnicode_FromString(cpp_string.c_str()));
+    CHECK(py_value, "empty py_value");
+    PyObject_CallObject(py_method, py_value);
+    PyGILState_Release(gstate);
+
+    return;
 }
+}
+
+// namespace py = pybind11;
+
+// struct DHPythonBindHook : public hook::HookInstallerWrap<DHPythonBindHook> {
+//     DHPythonBindHook(
+//         HookString_t lib,
+//         const std::function<HookString_t(HookString_t name)>& newSymbol)
+//         : newSymbol_(newSymbol) {
+//         LOG(INFO) << "DHPythonBindHook new lib name:" << lib;
+//         dynamic_obj_handle_ = dlopen(lib, RTLD_NOW | RTLD_LOCAL);
+//         if (!dynamic_obj_handle_) {
+//             LOG(FATAL) << "can't open lib:" << lib;
+//         }
+//     }
+//     bool targetLib(const char* name) { return false; }
+
+//     bool targetSym(const char* name) { return true; }
+
+//     void* newFuncPtr(const hook::OriginalInfo& info) {return nullptr;}
+//     void onSuccess() {}
+
+//     ~DHPythonBindHook() {
+//         if (dynamic_obj_handle_) {
+//             dlclose(dynamic_obj_handle_);
+//         }
+//     }
+
+//    private:
+//     std::function<HookString_t(HookString_t name)> newSymbol_;
+//     void* dynamic_obj_handle_{nullptr};
+// };
+
+// PYBIND11_MODULE(my_module, m) {
+//     py::class_<DHPythonBindHook>(m, "DHPythonBindHook")
+//         .def(py::init<int>(HookString_t, const
+//         std::function<HookString_t(HookString_t name)>&)) .def("install",
+//         &DHPythonBindHook::install);
+// }
+
+// PYBIND11_MODULE(hooker, m) {
+//     m.doc() = "pybind11 example plugin";  // optional module docstring
+
+//     m.def("add", &add, "A function that adds two numbers");
+// }

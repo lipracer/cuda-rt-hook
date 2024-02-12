@@ -51,23 +51,20 @@ class CMakeBuild(build_ext):
         subprocess.check_call(['cmake', '--build', '.'], cwd=build_dir)
         subprocess.check_call([f'{install_cmd}', 'install'], cwd=build_dir)
 
-def repaired_path(name):
-    return os.path.join(script_dir, name) if publish_build else name
-
 setup(
     name="cuda-mock",
-    version="0.1.1",
+    version="0.1.2",
     author="lipracer",
     author_email="lipracer@gmail.com",
     description="a tools hook some api call at runtime",
-    long_description=open(repaired_path('README.md')).read(),
+    long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
 
     url="https://github.com/lipracer/torch-cuda-mock", 
 
     ext_modules=[CMakeExtension('cuda_mock_impl', sourcedir='.')],
     cmdclass=dict(build_ext=CMakeBuild),
-    package_dir={'': repaired_path('src')},
+    package_dir={'': 'src'},
     package_data={'' : ['*']},
     zip_safe=False,
 )

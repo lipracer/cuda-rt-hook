@@ -426,6 +426,7 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
         {"PROFILE", logger::LogModule::profile},
         {"TRACE", logger::LogModule::trace},
         {"HOOK", logger::LogModule::hook},
+        {"PYTHON", logger::LogModule::python},
     };
     auto modules = hook::get_env_value<
         std::vector<std::pair<std::string, logger::LogLevel>>>("LOG_LEVEL");
@@ -458,6 +459,12 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
 #endif
 
     LogStreamCollection::instance().collect(this);
+    {
+        std::stringstream ss;
+        ss << "[PID:" << getpid() << "]"
+           << "[TID:" << threadId() << "]";
+        logHeader_ = ss.str();
+    }
 }
 
 LogStream::~LogStream() {}

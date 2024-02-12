@@ -39,9 +39,13 @@ for PYBIN in /opt/python/*/bin; do
     export PUBLISH_BUILD=1
 
     rm -rf /io/build
-    "${PYBIN}/pip" install -r /io/requirements.txt
-    # "${PYBIN}/pip" wheel /io/ --no-deps -w dist/
-    "${PYBIN}/python" /io/setup.py sdist bdist_wheel --dist-dir=/io/tmp_dist
+    pushd /io/
+        "${PYBIN}/pip" install -r requirements.txt
+        # "${PYBIN}/pip" show ninja
+
+        # "${PYBIN}/pip" wheel /io/ --no-deps -w dist/
+        "${PYBIN}/python" setup.py sdist bdist_wheel --dist-dir=tmp_dist
+    popd
 done
 
 # Bundle external shared libraries into the wheels

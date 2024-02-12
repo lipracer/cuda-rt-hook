@@ -9,3 +9,4 @@ wheel
 ninja
 setuptools
 pytest
+# pybind11
