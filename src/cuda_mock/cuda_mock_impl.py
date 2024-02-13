@@ -19,8 +19,10 @@ def internal_install_hook(*args):
     return cuda_mock_impl.internal_install_hook(*new_args)
 
 def internal_install_hook_regex(*args):
+    lib = ctypes.CDLL(args[-2])
     new_args = [ctypes.c_char_p(arg.encode('utf-8')) for arg in args]
-    return cuda_mock_impl.internal_install_hook_regex(*new_args)
+    cuda_mock_impl.internal_install_hook_regex(*new_args)
+    return lib
 
 def xpu_initialize(use_improve=False):
     return cuda_mock_impl.xpu_initialize(ctypes.c_bool(use_improve))
@@ -28,8 +30,62 @@ def xpu_initialize(use_improve=False):
 def patch_runtime():
     return cuda_mock_impl.patch_runtime()
 
+def log(*args):
+    new_args = [ctypes.c_char_p(arg.encode('utf-8')) for arg in args]
+    return cuda_mock_impl.py_log(*new_args)
+
+class __XpuRuntimeProfiler:
+    def __init__(self):
+        xpu_initialize(True)
+    def start_capture(self):
+        cuda_mock_impl.start_capture()
+
+    def end_capture(self):
+        c_python_object = ctypes.py_object(self)
+        cuda_mock_impl.end_capture(c_python_object)
+        return self.data
+
+    def end_callback(self, data):
+        import re
+        log("data:")
+        log(data)
+        pattern = r"\[\s*?XPURT_PROF\s*?\]\s+(\S+?)\s+(\d+?)\s+(\S+?)\s+ns"
+        matches = re.findall(pattern, data)
+        log("match:")
+        self.data = matches
+        log(str(self.data))
+
+class __GpuRuntimeProfiler:
+    def __init__(self):
+        pass
+    def start_capture(self):
+        import torch
+        import torch.autograd.profiler
+        self.prof = torch.autograd.profiler.profile(enabled=True, use_cuda=True, record_shapes=True, profile_memory=False).__enter__()
+    def end_capture(self):
+        self.prof.__exit__(None, None, None)
+        # print(self.prof.table(row_limit=-1))
+        table = self.prof.key_averages().table(row_limit=-1)
+        ll = filter(lambda it:it.key.startswith('aten::'), self.prof.key_averages())
+        ll = list(ll)
+        data = []
+        for it in list(ll):
+            data.append((it.key, it.cuda_time_total_str.replace("us", "")))
+            #print(it)
+            #print(it.key)
+            #print(it.self_cuda_time_total_str)
+            #print(it.cuda_time_str)
+        # print(type(self.prof.key_averages()))
+        # print(self.prof.key_averages())
+        self.data = data
+        log(str(self.data))
+
+RuntimeProfiler = __XpuRuntimeProfiler if True else __GpuRuntimeProfiler
+
+
 class HookInstaller:
     def __init__(self, lib):
+        self.lib = ctypes.CDLL(lib)
         c_python_object = ctypes.py_object(self)
         c_string_lib = ctypes.c_char_p(lib.encode('utf-8'))
         cuda_mock_impl.create_hook_installer(c_python_object, c_string_lib)

@@ -9,6 +9,8 @@
 #include <sstream>
 #include <thread>
 
+#include "StringRef.h"
+
 // #define DEBUG_LOGER
 #ifdef DEBUG_LOGER
 #include <iostream>
@@ -26,7 +28,11 @@
 namespace logger {
 
 enum class LogLevel { info = 0, warning, error, fatal, last };
-enum class LogModule { profile = 0x1, trace, hook, last };
+enum class LogModule { profile = 0x1, trace, hook, python, last };
+#define PROFILE logger::LogModule::profile
+#define TRACE logger::LogModule::trace
+#define HOOK logger::LogModule::hook
+#define PYTHON logger::LogModule::python
 
 struct StringLiteralBase {
     constexpr StringLiteralBase(size_t N) {
@@ -43,21 +49,74 @@ struct StringLiteral : public StringLiteralBase {
         }
     }
 
-    char str_[N];
+    constexpr StringLiteral() : StringLiteralBase(N) {}
 
-    constexpr auto simpleFile() const {
+    constexpr size_t size() const { return N; }
+
+    char str_[N] = {0};
+
+    constexpr operator const char*() const { return str_; }
+
+    constexpr auto simpleFileSize() const {
         for (int i = N - 1; i > 0; --i) {
             if (str_[i] == '/') {
-                return str_ + i + 1;
+                return N - i - 1;
             }
         }
-        return str_;
+        return N;
     }
 };
+
+template <size_t size, size_t N>
+constexpr auto simpleFile(StringLiteral<N> f) {
+    StringLiteral<size> result;
+    for (size_t i = 0, j = N - size; j != N;) {
+        result.str_[i++] = f.str_[j++];
+    }
+    return result;
+}
+
+template <size_t N, size_t M>
+inline constexpr auto operator+(StringLiteral<N> lhs, StringLiteral<M> rhs) {
+    StringLiteral<M + N - 1> result;
+    size_t i = 0;
+    for (; i < N - 1; ++i) {
+        result.str_[i] = lhs.str_[i];
+    }
+    for (; i < N + M - 1; ++i) {
+        result.str_[i] = rhs.str_[i + 1 - N];
+    }
+    return result;
+}
 
 template <size_t N>
 constexpr static auto makeStringLiteral(const char (&str)[N]) {
     return StringLiteral<N>(str);
+}
+
+namespace {
+
+template <size_t N>
+constexpr inline size_t getIntToStringSize() {
+    size_t nByte = 0;
+    size_t tmpN = N;
+    do {
+        ++nByte;
+    } while (tmpN /= 10);
+    return nByte;
+}
+}  // namespace
+
+template <size_t N>
+constexpr static auto makeStringLiteral() {
+    constexpr size_t nByte = getIntToStringSize<N>();
+    StringLiteral<nByte + 1> result;
+    size_t tmpN = N;
+    for (size_t i = 0; i < nByte; ++i) {
+        result.str_[nByte - 1 - i] = tmpN % 10 + '0';
+        tmpN /= 10;
+    }
+    return result;
 }
 
 template <size_t N>
@@ -99,10 +158,13 @@ class LogStream {
     }
 
     const char* getStrLevel(LogLevel level) {
-        constexpr const char* str[] = {
+        constexpr const char* console_str[] = {
             "\033[0;32m[INFO]\033[0m", "\033[0;33m[WARN]\033[0m",
             "\033[0;31m[ERROR]\033[0m", "\033[0;31m[FATAL]\033[0m"};
-        return str[static_cast<int>(level)];
+        constexpr const char* file_str[] = {"[INFO]", "[WARN]", "ERROR]",
+                                            "[FATAL]"};
+        return cfg_->stream == stdout ? console_str[static_cast<int>(level)]
+                                      : file_str[static_cast<int>(level)];
     }
 
     LogConsumer* logConsumer() { return logConsumer_.get(); }
@@ -119,6 +181,8 @@ class LogStream {
                "us";
     }
 
+    const std::string& logHeader() { return logHeader_; }
+
    private:
     LogLevel level_ = LogLevel::warning;
     std::stringstream ss_;
@@ -128,6 +192,7 @@ class LogStream {
         LogLevel::info};
     std::chrono::steady_clock::time_point start_point_{
         std::chrono::steady_clock::now()};
+    std::string logHeader_;
 };
 
 #define LOG_CONDITATION(level)    \
@@ -163,16 +228,15 @@ LogStream& operator<<(LogStream& s, T&& t) {
 }
 
 struct LogWrapper {
-    explicit LogWrapper(LogLevel level) : level_(level) {
-        st_ = std::chrono::high_resolution_clock::now();
-        LogStream::instance() << LogStream::instance().getStrLevel(level)
-                              << "[TID:" << LogStream::threadId() << "]";
-    }
-    explicit LogWrapper(int level) : LogWrapper(static_cast<LogLevel>(level)) {}
+    explicit LogWrapper(LogLevel level) : level_(level) {}
+    explicit LogWrapper(int level, const char* str)
+        : LogWrapper(static_cast<LogLevel>(level), str) {}
 
-    explicit LogWrapper(LogLevel level, bool) : level_(LogLevel::last) {
-        LogStream::instance() << LogStream::instance().getStrLevel(level)
-                              << "[TID:" << LogStream::threadId() << "]";
+    explicit LogWrapper(LogLevel level, const char* str) : LogWrapper(level) {
+        LogStream::instance()
+            << LogStream::instance().getStrLevel(level) << str
+            << LogStream::instance().logHeader()
+            << "[TS:" << logger::LogStream::instance().time_duration() << "]";
     }
 
     ~LogWrapper() {
@@ -329,23 +393,37 @@ void destroy_logger();
 #define ERROR logger::LogLevel::error
 #define FATAL logger::LogLevel::fatal
 
-#define LOGGER_COMMON_ITEMS                                             \
-    "[time:" << logger::LogStream::instance().time_duration() << "]["   \
-             << logger::makeStringLiteral(__FILE__).simpleFile() << ":" \
-             << std::dec << __LINE__ << "]"
+static constexpr char __LOGGER_HEADER__[] = "[{}:{}]";
+static constexpr char __MLOGGER_HEADER__[] = "[{}][{}:{}]";
 
-#define LOG_IMPL(level)                                           \
-    !LOG_CONDITATION(level)                                       \
-        ? void(0)                                                 \
-        : logger::StreamPlaceHolder() < logger::LogWrapper(level) \
-                                            << LOGGER_COMMON_ITEMS
+#define GetFixedLogerHeader(f, L)                                          \
+    logger::makeStringLiteral("[") +                                       \
+        logger::simpleFile<logger::makeStringLiteral(f).simpleFileSize()>( \
+            logger::makeStringLiteral(f)) +                                \
+        logger::makeStringLiteral(":") + logger::makeStringLiteral<L>() +  \
+        logger::makeStringLiteral("]")
 
-#define MLOG_IMPL(m, str_m, level)                                        \
-    !MLOG_CONDITATION(m, level)                                           \
-        ? void(0)                                                         \
-        : logger::StreamPlaceHolder() < logger::LogWrapper(level, true)   \
-                                            << LOGGER_COMMON_ITEMS << "[" \
-                                            << str_m << "]"
+#define MGetFixedLogerHeader(m, f, L)                                      \
+    logger::makeStringLiteral("[") + logger::makeStringLiteral(m) +        \
+        logger::makeStringLiteral("]") + logger::makeStringLiteral("[") +  \
+        logger::simpleFile<logger::makeStringLiteral(f).simpleFileSize()>( \
+            logger::makeStringLiteral(f)) +                                \
+        logger::makeStringLiteral(":") + logger::makeStringLiteral<L>() +  \
+        logger::makeStringLiteral("]")
+
+#define LOG_IMPL(level)                 \
+    !LOG_CONDITATION(level)             \
+        ? void(0)                       \
+        : logger::StreamPlaceHolder() < \
+              logger::LogWrapper(level, \
+                                 GetFixedLogerHeader(__FILE__, __LINE__))
+
+#define MLOG_IMPL(m, str_m, level)      \
+    !MLOG_CONDITATION(m, level)         \
+        ? void(0)                       \
+        : logger::StreamPlaceHolder() < \
+              logger::LogWrapper(       \
+                  level, MGetFixedLogerHeader(str_m, __FILE__, __LINE__))
 
 #define LOG(level) LOG_IMPL(static_cast<int>(level))
 
@@ -375,9 +453,5 @@ void destroy_logger();
                         fmt::format("expect lhs:{} == rhs:{}", l, r))
 
 #define be_unreachable(...) INTERNAL_CHECK_IMPL(false, __VA_ARGS__)
-
-#define PROFILE logger::LogModule::profile
-#define TRACE logger::LogModule::trace
-#define HOOK logger::LogModule::hook
 
 #define MLOG(m, level) MLOG_IMPL(m, #m, level)
