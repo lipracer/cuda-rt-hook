@@ -44,19 +44,16 @@ struct SkipKernelRunHook : public hook::HookInstallerWrap<SkipKernelRunHook> {
 struct XpuRuntimePrintfHook
     : public hook::HookInstallerWrap<XpuRuntimePrintfHook> {
     static int builtin_printf_chk(int flag, const char* fmt, ...) {
-        LOG(INFO) << __func__;
         __internal_printf();
         return 0;
     }
 
     static int builtin_printf(const char* fmt, ...) {
-        LOG(INFO) << __func__;
         __internal_printf();
         return 0;
     }
 
     static int builtin_fprintf(void* stdcout, const char* fmt, ...) {
-        LOG(INFO) << __func__;
         __internal_printf();
         return 0;
     }
