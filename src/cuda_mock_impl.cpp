@@ -144,7 +144,7 @@ HOOK_API void py_log(HookString_t str) { MLOG(PYTHON, INFO) << str; }
 HOOK_API void start_capture() { dh_start_capture_rt_print(); }
 HOOK_API void end_capture(PyObject* py_instance) {
     auto cpp_string = dh_end_capture_rt_print();
-    LOG(INFO) << cpp_string;
+    LOG(INFO) << "dh_end_capture_rt_print:" << cpp_string;
 
     Py_Initialize();
     CHECK(Py_IsInitialized(), "python interpreter uninitialized");
