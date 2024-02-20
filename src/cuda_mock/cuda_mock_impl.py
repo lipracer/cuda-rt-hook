@@ -3,6 +3,7 @@ import ctypes
 from .dynamic_obj import *
 import json
 import re
+import inspect
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 cuda_mock_impl = ctypes.CDLL(f'{script_dir}/libcuda_mock_impl.so')
@@ -33,7 +34,13 @@ def patch_runtime():
     return cuda_mock_impl.patch_runtime()
 
 def log(*args):
-    new_args = [ctypes.c_char_p(arg.encode('utf-8')) for arg in args]
+    caller_frame = inspect.currentframe().f_back
+    caller_filename = inspect.getframeinfo(caller_frame).filename
+    caller_lineno = inspect.getframeinfo(caller_frame).lineno
+    for arg in args:
+        assert isinstance(arg, str), f"expect str type but got {type(arg)}"
+    new_args = [f'[{caller_filename}:{caller_lineno}]{arg}' for arg in args]
+    new_args = [ctypes.c_char_p(arg.encode('utf-8')) for arg in new_args]
     return cuda_mock_impl.py_log(*new_args)
 
 cuda_version = os.environ.get('CUDA_VERSION', None)
@@ -128,12 +135,12 @@ class __GpuRuntimeProfiler:
         pass
     def start_capture(self):
         import torch
-        import torch.autograd.profiler
-        self.prof = torch.autograd.profiler.profile(enabled=True, use_cuda=True, record_shapes=True, profile_memory=False).__enter__()
+        from torch.profiler import profile, record_function, ProfilerActivity
+        self.prof = profile(activities=[ProfilerActivity.CUDA], record_shapes=False).__enter__()
     def end_capture(self, op_key):
         self.prof.__exit__(None, None, None)
         # print(self.prof.table(row_limit=-1))
-        table = self.prof.key_averages().table(row_limit=-1)
+        table = self.prof.key_averages().table(sort_by="cuda_time_total", row_limit=-1)
         time_list = self.prof.key_averages()
 
         data = []
@@ -148,9 +155,11 @@ class __GpuRuntimeProfiler:
 
         pattern = r"Self CUDA time total:(.*\s)"
         matches = re.findall(pattern, table)
-        log(f"Self CUDA time total:{matches}")
-        data.append(('total', matches[0]))
 
+        if len(matches) == 1:
+            data.append(('total', matches[0]))
+        else:
+            data.append(('total', "0.0ms"))
         self.data = data
         gProfileDataCollection.append_gpu(op_key, self.data)
         log(f"{op_key}:{self.data}")

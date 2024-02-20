@@ -153,8 +153,13 @@ void StringPool::push_back(const std::string& str) {
         flushPool();
         currentPoolBegin_ = pool_;
         assert(currentPoolBegin_ == pool_begin() && "flush reset error!");
-        size_ = 1;
         begin_ = reinterpret_cast<SimpleStringRef*>(pool_);
+        if (LOGGER_UNLIKELY(currentPoolBegin_ + alignSize > currentPoolEnd_)) {
+            flushFunc_(str.c_str(), str.size());
+            size_ = 0;
+            return;
+        }
+        size_ = 1;
     } else {
         ++size_;
     }
@@ -235,6 +240,10 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
         if (!path.empty()) {
             path = getFileName(path);
             cfg_->stream = fopen(path.c_str(), "wt+");
+            if (!cfg_->stream) {
+                fprintf(stderr, "can't open file:%s\n", path.c_str());
+                cfg_->stream = stdout;
+            }
         }
         if (cfg->mode == LogConfig::kAsync) {
             // future_ = promise_.get_future();
