@@ -64,3 +64,12 @@ TEST(logger, sync_logger) {
         return 0;
     });
 }
+
+TEST(logger, overflow) {
+    std::string line(128, 'A');
+    std::string large_msg;
+    for(size_t i = 0; i < 30; ++i) {
+    large_msg = large_msg + line + '\n';
+    }
+    LOG(WARN) << large_msg;
+}
