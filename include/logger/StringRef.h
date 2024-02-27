@@ -38,11 +38,6 @@ class StringRef {
 
     const char* data() const { return str_; }
 
-    bool operator==(const char* str) const {
-        StringRef other(str);
-        return *this == other;
-    }
-
     bool operator==(StringRef other) const {
         return size_ == other.size_ &&
                (str_ == other.str_ || !strcmp(str_, other.str_));
@@ -66,6 +61,15 @@ class StringRef {
     size_t size_;
     const CharT* str_;
 };
+
+inline bool operator==(StringRef lhs, const char* rhs) {
+    return lhs == StringRef(rhs);
+}
+
+inline bool operator==(const char* lhs, StringRef rhs) {
+    return StringRef(lhs) == rhs;
+}
+
 
 inline std::ostream& operator<<(std::ostream& os, StringRef str) {
     os << str.str();
