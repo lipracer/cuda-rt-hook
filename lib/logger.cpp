@@ -428,15 +428,22 @@ LogStream& LogStream::instance(const LogConfig& cfg) {
     return *__instance;
 }
 
-LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
-                     const std::shared_ptr<LogConfig>& cfg)
-    : logConsumer_(logConsumer), cfg_(cfg) {
+std::tuple<size_t, std::unordered_map<std::string, logger::LogModule>*>
+ModuleStringId(const char* module) {
     static std::unordered_map<std::string, logger::LogModule> ModuleMap = {
         {"PROFILE", logger::LogModule::profile},
         {"TRACE", logger::LogModule::trace},
         {"HOOK", logger::LogModule::hook},
         {"PYTHON", logger::LogModule::python},
     };
+    auto iter = ModuleMap.find(module);
+    return std::make_tuple(std::distance(ModuleMap.begin(), iter), &ModuleMap);
+}
+
+LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
+                     const std::shared_ptr<LogConfig>& cfg)
+    : logConsumer_(logConsumer), cfg_(cfg) {
+    auto& ModuleMap = *std::get<1>(ModuleStringId(""));
     auto modules = hook::get_env_value<
         std::vector<std::pair<std::string, logger::LogLevel>>>("LOG_LEVEL");
     std::fill(std::begin(module_set_), std::end(module_set_),
