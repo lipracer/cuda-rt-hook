@@ -8,6 +8,7 @@
 #include <memory>
 #include <sstream>
 #include <thread>
+#include <unordered_map>
 
 #include "StringRef.h"
 
@@ -195,13 +196,24 @@ class LogStream {
     std::string logHeader_;
 };
 
-#define LOG_CONDITATION(level)    \
-    (static_cast<int>((level)) >= \
-     static_cast<int>(logger::LogStream::instance().getLevel()))
+std::tuple<size_t, std::unordered_map<std::string, logger::LogModule>*>
+ModuleStringId(const char* module);
 
-#define MLOG_CONDITATION(m, l)                                            \
-    (logger::LogStream::instance().IsModuleEnable(static_cast<size_t>(m), \
-                                                  static_cast<size_t>(l)))
+inline bool LOG_CONDITATION(LogLevel level) {
+    return (static_cast<int>((level)) >=
+            static_cast<int>(logger::LogStream::instance().getLevel()));
+}
+
+inline bool MLOG_CONDITATION(const char* m, LogLevel l) {
+    return logger::LogStream::instance().IsModuleEnable(
+        static_cast<size_t>(std::get<0>(ModuleStringId(m))),
+        static_cast<size_t>(l));
+}
+
+inline bool MLOG_CONDITATION(LogModule m, LogLevel l) {
+    return logger::LogStream::instance().IsModuleEnable(static_cast<size_t>(m),
+                                                        static_cast<size_t>(l));
+}
 
 template <typename T>
 using VoidType = void;
@@ -254,6 +266,24 @@ struct LogWrapper {
     static thread_local std::chrono::high_resolution_clock::duration totalDur;
 };
 
+struct MLogWrapper : public LogWrapper {
+    explicit MLogWrapper(const char* module, LogLevel level, const char* str)
+        : LogWrapper(level, str), module_(module) {}
+
+    ~MLogWrapper() {
+        if (MLOG_CONDITATION(module_, level_)) {
+            LogStream::instance().flush();
+        }
+        totalDur += std::chrono::high_resolution_clock::now() - st_;
+        // crash here
+        if (LOGGER_UNLIKELY(level_ == LogLevel::fatal)) {
+            LogStream::instance().log_fatal();
+        }
+    }
+
+    const char* module_;
+};
+
 template <typename T>
 static const LogWrapper& operator<<(const LogWrapper& s, T&& t) {
     if (LOG_CONDITATION(s.level_)) {
@@ -262,9 +292,18 @@ static const LogWrapper& operator<<(const LogWrapper& s, T&& t) {
     return s;
 }
 
+template <typename T>
+static const MLogWrapper& operator<<(const MLogWrapper& s, T&& t) {
+    if (MLOG_CONDITATION(s.module_, s.level_)) {
+        LogStream::instance() << std::forward<T>(t);
+    }
+    return s;
+}
+
 class StreamPlaceHolder {};
 
 static void operator<(const StreamPlaceHolder&, const LogWrapper&) {}
+static void operator<(const StreamPlaceHolder&, const MLogWrapper&) {}
 
 class StringPool;
 
@@ -412,20 +451,21 @@ static constexpr char __MLOGGER_HEADER__[] = "[{}][{}:{}]";
         logger::makeStringLiteral("]")
 
 #define LOG_IMPL(level)                 \
-    !LOG_CONDITATION(level)             \
+    !logger::LOG_CONDITATION(level)     \
         ? void(0)                       \
         : logger::StreamPlaceHolder() < \
               logger::LogWrapper(level, \
                                  GetFixedLogerHeader(__FILE__, __LINE__))
 
 #define MLOG_IMPL(m, str_m, level)      \
-    !MLOG_CONDITATION(m, level)         \
+    !logger::MLOG_CONDITATION(m, level) \
         ? void(0)                       \
         : logger::StreamPlaceHolder() < \
-              logger::LogWrapper(       \
-                  level, MGetFixedLogerHeader(str_m, __FILE__, __LINE__))
+              logger::MLogWrapper(      \
+                  str_m, level,         \
+                  MGetFixedLogerHeader(str_m, __FILE__, __LINE__))
 
-#define LOG(level) LOG_IMPL(static_cast<int>(level))
+#define LOG(level) LOG_IMPL(level)
 
 #define INTERNAL_CHECK_IMPL(p, msg)                                  \
     do {                                                             \

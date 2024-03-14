@@ -122,6 +122,9 @@ TEST(RingBufferTest, pop) {
 // }
 
 TEST(StringRef, member) {
+    EXPECT_EQ("123", adt::StringRef("123"));
+    EXPECT_EQ(adt::StringRef("123"), "123");
+
     EXPECT_EQ(adt::StringRef("abcdefg").contain("ab"), true);
     EXPECT_EQ(adt::StringRef("abcdefg").find("hj"), std::string::npos);
 
