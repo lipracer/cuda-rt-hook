@@ -60,10 +60,11 @@ setup(
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
 
-    url="https://github.com/lipracer/torch-cuda-mock", 
+    url="https://github.com/lipracer/torch-cuda-mock",
 
     ext_modules=[CMakeExtension('cuda_mock_impl', sourcedir='.')],
     cmdclass=dict(build_ext=CMakeBuild),
+    packages=find_packages(where='src'),
     package_dir={'': 'src'},
     package_data={'' : ['*']},
     zip_safe=False,
