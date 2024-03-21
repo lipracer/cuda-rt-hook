@@ -428,32 +428,20 @@ LogStream& LogStream::instance(const LogConfig& cfg) {
     return *__instance;
 }
 
-std::tuple<size_t, std::unordered_map<std::string, logger::LogModule>*>
-ModuleStringId(const char* module) {
-    static std::unordered_map<std::string, logger::LogModule> ModuleMap = {
-        {"PROFILE", logger::LogModule::profile},
-        {"TRACE", logger::LogModule::trace},
-        {"HOOK", logger::LogModule::hook},
-        {"PYTHON", logger::LogModule::python},
-    };
-    auto iter = ModuleMap.find(module);
-    return std::make_tuple(std::distance(ModuleMap.begin(), iter), &ModuleMap);
-}
-
 LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
                      const std::shared_ptr<LogConfig>& cfg)
     : logConsumer_(logConsumer), cfg_(cfg) {
-    auto& ModuleMap = *std::get<1>(ModuleStringId(""));
     auto modules = hook::get_env_value<
         std::vector<std::pair<std::string, logger::LogLevel>>>("LOG_LEVEL");
     std::fill(std::begin(module_set_), std::end(module_set_),
               logger::LogLevel::warning);
-    for (auto& pair : ModuleMap) {
+    for (auto name : LogModuleHelper::enum_strs()) {
         auto iter = std::find_if(
             modules.begin(), modules.end(),
-            [&](const auto& env_v) { return env_v.first == pair.first; });
+            [&](const auto& env_v) { return env_v.first == name; });
         if (modules.end() != iter) {
-            size_t IntModule = static_cast<size_t>(ModuleMap[iter->first]);
+            size_t IntModule =
+                static_cast<size_t>(LogModuleHelper::strToEnum(name));
             CHECK_LT(IntModule, sizeof(module_set_) / sizeof(module_set_[0]));
             module_set_[IntModule] = iter->second;
         }
