@@ -27,9 +27,55 @@
 #endif /* LOGGER_UNLIKELY */
 
 namespace logger {
-
 enum class LogLevel { info = 0, warning, error, fatal, last };
-enum class LogModule { profile = 0x1, trace, hook, python, last };
+enum class LogModule { profile, trace, hook, python, last };
+
+class LogModuleHelper {
+   public:
+    static auto& enum_strs() {
+        static std::array<const char*, 5> strs = {"profile", "trace", "hook",
+                                                         "python", "last"};
+        return strs;
+    }
+    static auto begin() { return enum_strs().begin(); }
+    static auto end() { return enum_strs().end(); }
+
+    template <size_t N>
+    static int strToEnum(const char(name)[N]) {
+        for (size_t i = 0; i < enum_strs().size(); ++i) {
+            if (!strcmp(enum_strs()[i], name)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    static int strToEnum(const char* name) {
+        for (size_t i = 0; i < enum_strs().size(); ++i) {
+            if (!strcmp(enum_strs()[i], name)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+};
+
+}  // namespace logger
+
+namespace std {
+inline std::string to_string(logger::LogLevel e) {
+    const char* name[] = {"info", "warning", "error", "fatal", "last"};
+    return name[static_cast<int>(e)];
+}
+inline std::string to_string(logger::LogModule e) {
+    return logger::LogModuleHelper::enum_strs()[static_cast<int>(e)];
+}
+}  // namespace std
+
+using std::to_string;
+
+namespace logger {
+
 #define PROFILE logger::LogModule::profile
 #define TRACE logger::LogModule::trace
 #define HOOK logger::LogModule::hook
@@ -196,9 +242,6 @@ class LogStream {
     std::string logHeader_;
 };
 
-std::tuple<size_t, std::unordered_map<std::string, logger::LogModule>*>
-ModuleStringId(const char* module);
-
 inline bool LOG_CONDITATION(LogLevel level) {
     return (static_cast<int>((level)) >=
             static_cast<int>(logger::LogStream::instance().getLevel()));
@@ -206,7 +249,7 @@ inline bool LOG_CONDITATION(LogLevel level) {
 
 inline bool MLOG_CONDITATION(const char* m, LogLevel l) {
     return logger::LogStream::instance().IsModuleEnable(
-        static_cast<size_t>(std::get<0>(ModuleStringId(m))),
+        static_cast<size_t>(LogModuleHelper::strToEnum(m)),
         static_cast<size_t>(l));
 }
 
