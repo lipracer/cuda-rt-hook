@@ -239,7 +239,7 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
 
         size_t idx = ELF64_R_SYM(plt->r_info);
         idx = pltTable->dynsym[idx].st_name;
-        MLOG(HOOK, INFO) << pltTable->symbol_table + idx;
+        MLOG(HOOK, INFO) << pltTable->symbol_table + idx; //got symbol name from STRTAB
         if (!installer.isTargetSymbol(pltTable->symbol_table + idx)) {
             continue;
         }
@@ -249,7 +249,7 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         if (prot == 0) {
             return -1;
         }
-        if (!(prot & PROT_WRITE)) {
+        if (!(prot & PROT_WRITE)) { //not writable and cannot convert to writable page
             if (mprotect(ALIGN_ADDR(addr), page_size, PROT_READ | PROT_WRITE) !=
                 0) {
                 return -1;

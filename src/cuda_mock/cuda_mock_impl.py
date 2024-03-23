@@ -4,9 +4,11 @@ from .dynamic_obj import *
 import json
 import re
 import inspect
+from .ctypes_helper import convert_arg_list_of_str
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 cuda_mock_impl = ctypes.CDLL(f'{script_dir}/libcuda_mock_impl.so')
+cuda_mock_impl.print_hook_initialize.argtypes = [ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_char_p)]
 
 def add(lhs, rhs):
     return lhs + rhs
@@ -27,8 +29,14 @@ def internal_install_hook_regex(*args):
     cuda_mock_impl.internal_install_hook_regex(*new_args)
     return lib
 
-def xpu_initialize(use_improve=False):
-    return cuda_mock_impl.xpu_initialize(ctypes.c_bool(use_improve))
+def xpu_initialize():
+    return cuda_mock_impl.xpu_initialize()
+
+def print_hook_initialize(target_libs, target_symbols):
+    target_libs = convert_arg_list_of_str(target_libs)
+    target_symbols = convert_arg_list_of_str(target_symbols)
+    cuda_mock_impl.print_hook_initialize(target_libs, target_symbols)
+    
 
 def patch_runtime():
     return cuda_mock_impl.patch_runtime()
@@ -109,17 +117,18 @@ class ProfileDataCollection:
             json.dump(self.data, f, indent=4)
 
 gProfileDataCollection = ProfileDataCollection("gpu" if cuda_version else "xpu")
-
+gDefaultTargetLib = ["libxpucuda.so", "libcuda.so"]
+gDefaultTargetSymbols = ["__printf_chk", "printf","fprintf","__fprintf","vfprintf",]
 class __XpuRuntimeProfiler:
-    def __init__(self):
-        xpu_initialize(True)
+    def __init__(self, target_libs = gDefaultTargetLib, target_symbols = gDefaultTargetSymbols):
+        print_hook_initialize(target_libs=target_libs, target_symbols=target_symbols)
     def start_capture(self):
-        cuda_mock_impl.start_capture()
+        cuda_mock_impl.print_hook_start_capture()
 
     def end_capture(self, op_key):
         log(f"op_key:{op_key}")
         c_python_object = ctypes.py_object(self)
-        cuda_mock_impl.end_capture(c_python_object)
+        cuda_mock_impl.print_hook_end_capture(c_python_object)
         log(f"data:{self.data}")
         gProfileDataCollection.append_xpu(op_key, self.data)
         return self.data
@@ -131,8 +140,8 @@ class __XpuRuntimeProfiler:
 
 
 class __GpuRuntimeProfiler:
-    def __init__(self):
-        pass
+    def __init__(self, target_libs = gDefaultTargetLib, target_symbols = gDefaultTargetSymbols):
+        print_hook_initialize(target_libs=target_libs, target_symbols=target_symbols)
     def start_capture(self):
         import torch
         from torch.profiler import profile, record_function, ProfilerActivity
