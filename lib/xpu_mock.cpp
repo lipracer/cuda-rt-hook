@@ -241,9 +241,9 @@ struct PatchRuntimeHook : public hook::HookInstallerWrap<PatchRuntimeHook> {
 
 }  // namespace
 
-extern "C" {
 
 extern bool use_xpu_mock_improve();
+
 
 void xpu_dh_initialize(bool use_improve) {
     if (use_improve && use_xpu_mock_improve()) {
@@ -254,4 +254,3 @@ void xpu_dh_initialize(bool use_improve) {
 }
 
 void dh_patch_runtime() { PatchRuntimeHook::instance()->install(); }
-}
