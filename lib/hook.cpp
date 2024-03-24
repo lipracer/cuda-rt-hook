@@ -298,27 +298,86 @@ int retrieve_dyn_lib(struct dl_phdr_info* info, size_t info_size, void* table) {
                      << " dlpi_phdr:" << std::hex
                      << reinterpret_cast<const void*>(info->dlpi_phdr)
                      << " info_size:" << info_size;
+    /*
+        遍历info->dlpi_phdr数组中的program header, dlpi_phdr是一个ElfW(Phdr)类型的数组。
+        info->dlpi_phnum是一个ElfW(Half)类型的变量，表示dlpi_phdr数组的长度，也就是header的个数
+
+        ElfW(Phdr)是segment header，表征了segment的各个属性，它是一个宏，在64位系统下是Elf64_Phdr，定义在/usr/include/elf.h中，其定义如下：
+        typedef struct
+        {
+            Elf64_Word	p_type;		// Segment type
+            Elf64_Word	p_flags;	// Segment flags
+            Elf64_Off	p_offset;	// Segment file offset
+            Elf64_Addr	p_vaddr;	// Segment virtual address
+            Elf64_Addr	p_paddr;	// Segment physical address
+            Elf64_Xword	p_filesz;	// Segment size in file
+            Elf64_Xword	p_memsz;	// Segment size in memory
+            Elf64_Xword	p_align;	// Segment alignment
+        } Elf64_Phdr;
+    */
     for (size_t header_index = 0; header_index < info->dlpi_phnum;
          header_index++) {
+        /*
+        如果一个elf文件参与动态链接，那么program header中会出现类型为PT_DYNAMIC的header
+        只有这个段是我们所关心的，其他不关心。
+        */
         if (info->dlpi_phdr[header_index].p_type == PT_DYNAMIC) {
+            /*
+                info->dlpi_addr: 共享对象的虚拟内存起始地址，相对于进程的地址空间。对于可执行文件，这通常是0。
+                info->dlpi_phdr[header_index].p_vaddr 第header_index个segment的虚拟起始地址，相对于info->dlpi_addr
+                那么二者相加，就是segment的虚拟地址，也就是segment在进程中的实际地址
+
+                ElfW(Dyn)宏扩展为，定义在/usr/include/elf.h中
+                typedef struct
+                {
+                Elf64_Sxword	d_tag;			// Dynamic entry type
+                union
+                    {
+                    Elf64_Xword d_val;		// Integer value
+                    Elf64_Addr d_ptr;			// Address value
+                    } d_un;
+                } Elf64_Dyn;
+                根据d_tag不同，d_un可以表示整数或者地址
+            */
             dyn = (ElfW(Dyn)*)(info->dlpi_addr +
                                info->dlpi_phdr[header_index].p_vaddr);
+            /*
+                dynamic段是一个ElfW(Dyn)类型的数组，以DT_NULL结束，类似用null代表字符串结尾。
+                DT_*的详细含义见：https://docs.oracle.com/cd/E19683-01/816-7529/chapter6-42444/index.html
+            */
             while (dyn->d_tag != DT_NULL) {
                 switch (dyn->d_tag) {
+                    /*
+                        字符串表，elf文件使用了一个单独的区域存储所有的字符串。引用字符串时，需要给出字符串在字符串表中的偏移。
+                        从该偏移开始到null，就是所需要的字符串。
+                        这是做target_symbol匹配时需要的
+                        Q：这是dynamic段独占的还是elf共享的？
+                    */
                     case DT_STRTAB: {
                         pltTable.symbol_table =
                             reinterpret_cast<char*>(dyn->d_un.d_ptr);
                     } break;
                     case DT_STRSZ: {
                     } break;
+                    /*
+                        符号表，实际存的不是字符串，而是DT_STRTAB的offset，参考install_hooker。
+                        这也是做target_symbol匹配时需要的
+                    */
                     case DT_SYMTAB: {
                         pltTable.dynsym =
                             reinterpret_cast<ElfW(Sym)*>(dyn->d_un.d_ptr);
                     } break;
+                    /*
+                        plt表的起始地址，什么是plt表：https://docs.oracle.com/cd/E19683-01/816-7529/6mdhf5r3k/index.html#chapter6-1235
+                        这是我们需要patch的。
+                    */
                     case DT_JMPREL: {
                         pltTable.rela_plt =
                             reinterpret_cast<ElfW(Rela)*>(dyn->d_un.d_ptr);
                     } break;
+                    /*
+                        plt表的长度
+                    */
                     case DT_PLTRELSZ: {
                         pltTable.rela_plt_cnt =
                             dyn->d_un.d_val / sizeof(Elf_Plt_Rel);
@@ -379,6 +438,9 @@ void install_hook(const HookInstaller& installer) {
     page_size = sysconf(_SC_PAGESIZE);
 
     std::vector<PltTable> vecPltTable;
+    /*
+        遍历所有动态库，dl_iterate_phdr是系统提供的函数
+    */
     dl_iterate_phdr(retrieve_dyn_lib, &vecPltTable);
     MLOG(HOOK, INFO) << "collect plt table size:" << vecPltTable.size();
     {
