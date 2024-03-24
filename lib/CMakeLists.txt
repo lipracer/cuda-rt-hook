@@ -22,7 +22,7 @@ add_library(cuda_mock STATIC
     statistic.cpp
 )
 
-add_library(xpu_mock_improve SHARED xpu_mock_improve.cpp)
+add_library(xpu_mock_improve SHARED hooks/print_hook.cpp)
 target_include_directories(xpu_mock_improve PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}../include)
 set_target_properties(xpu_mock_improve
     PROPERTIES

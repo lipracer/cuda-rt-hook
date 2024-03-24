@@ -1,12 +1,16 @@
 #pragma once
 #include <string>
+#include <vector>
+#include "logger/StringRef.h"
 
-extern "C" {
-
-void xpu_dh_initialize(bool use_improve);
 
 void dh_patch_runtime();
 
-void dh_start_capture_rt_print();
-std::string dh_end_capture_rt_print();
-}
+
+void __runtimeapi_hook_initialize();
+
+void __print_hook_initialize(std::vector<adt::StringRef> &target_libs, std::vector<adt::StringRef> &target_symbols);
+
+void __print_hook_start_capture();
+
+std::string __print_hook_end_capture();

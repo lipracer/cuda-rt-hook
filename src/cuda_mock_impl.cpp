@@ -12,6 +12,7 @@
 #include "cuda_mock.h"
 #include "hook.h"
 #include "logger/logger.h"
+#include "logger/StringRef.h"
 #include "xpu_mock.h"
 
 // namespace nb = nanobind;
@@ -35,6 +36,19 @@
 //           });
 //     m.def("xpu_initialize", []() { xpu_dh_initialize(); });
 // }
+
+std::vector<adt::StringRef> convert_arg_list_of_str(const char ** list_of_str){
+    std::vector<adt::StringRef> result;
+    if (list_of_str == nullptr) {
+        MLOG(PYTHON, ERROR) << "impossible convert_arg_list_of_str";
+        return result;
+    }
+    for(const char** str = list_of_str; *str != nullptr; ++str){
+        result.emplace_back(adt::StringRef(*str));
+        MLOG(PYTHON, INFO) << "convert_arg_list_of_str convert " << result.back() << "to cpp object";
+    }
+    return result;
+}
 
 extern "C" {
 
@@ -61,9 +75,47 @@ HOOK_API void internal_install_hook_regex(HookString_t srcLib,
                                    hookerSymbolName);
 }
 
-HOOK_API void xpu_initialize(bool use_improve) {
-    xpu_dh_initialize(use_improve);
+HOOK_API void xpu_initialize() { // hooker = "profile"
+    __runtimeapi_hook_initialize();
 }
+
+
+/*
+    for print_hook
+*/
+
+HOOK_API void print_hook_initialize(const char ** target_libs, const char** target_symbols){
+    std::vector<adt::StringRef> cpp_target_libs  = convert_arg_list_of_str(target_libs);
+    std::vector<adt::StringRef> cpp_target_symbols  = convert_arg_list_of_str(target_symbols);
+    __print_hook_initialize(cpp_target_libs, cpp_target_symbols);
+}
+
+HOOK_API void print_hook_start_capture() {
+    __print_hook_start_capture();
+}
+
+HOOK_API void print_hook_end_capture(PyObject* py_instance) {
+    auto cpp_string = __print_hook_end_capture();
+    LOG(INFO) << "__print_hook_end_capture:" << cpp_string;
+
+    Py_Initialize();
+    CHECK(Py_IsInitialized(), "python interpreter uninitialized");
+
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    // https://stackoverflow.com/questions/1796510/accessing-a-python-traceback-from-the-c-api
+    // PyThreadState* tstate = PyThreadState_GET();
+
+    PyObject* py_method = PyObject_GetAttrString(py_instance, "end_callback");
+    CHECK(py_method, "empty py_method");
+    PyObject* py_value =
+        PyTuple_Pack(1, PyUnicode_FromString(cpp_string.c_str()));
+    CHECK(py_value, "empty py_value");
+    PyObject_CallObject(py_method, py_value);
+    PyGILState_Release(gstate);
+
+    return;
+}
+
 
 HOOK_API void patch_runtime() { dh_patch_runtime(); }
 
@@ -141,30 +193,8 @@ HOOK_API void create_hook_installer(PyObject* py_instance, HookString_t lib) {
 
 HOOK_API void py_log(HookString_t str) { MLOG(PYTHON, INFO) << str; }
 
-HOOK_API void start_capture() { dh_start_capture_rt_print(); }
-HOOK_API void end_capture(PyObject* py_instance) {
-    auto cpp_string = dh_end_capture_rt_print();
-    LOG(INFO) << "dh_end_capture_rt_print:" << cpp_string;
 
-    Py_Initialize();
-    CHECK(Py_IsInitialized(), "python interpreter uninitialized");
-
-    PyGILState_STATE gstate = PyGILState_Ensure();
-    // https://stackoverflow.com/questions/1796510/accessing-a-python-traceback-from-the-c-api
-    // PyThreadState* tstate = PyThreadState_GET();
-
-    PyObject* py_method = PyObject_GetAttrString(py_instance, "end_callback");
-    CHECK(py_method, "empty py_method");
-    PyObject* py_value =
-        PyTuple_Pack(1, PyUnicode_FromString(cpp_string.c_str()));
-    CHECK(py_value, "empty py_value");
-    PyObject_CallObject(py_method, py_value);
-    PyGILState_Release(gstate);
-
-    return;
 }
-}
-
 // namespace py = pybind11;
 
 // struct DHPythonBindHook : public hook::HookInstallerWrap<DHPythonBindHook> {

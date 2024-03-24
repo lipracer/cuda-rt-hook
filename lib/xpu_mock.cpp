@@ -18,6 +18,7 @@
 #include "logger/logger.h"
 #include "statistic.h"
 #include "support.h"
+#include "hooks/print_hook.h"
 
 namespace {
 
@@ -241,17 +242,10 @@ struct PatchRuntimeHook : public hook::HookInstallerWrap<PatchRuntimeHook> {
 
 }  // namespace
 
-extern "C" {
 
-extern bool use_xpu_mock_improve();
-
-void xpu_dh_initialize(bool use_improve) {
-    if (use_improve && use_xpu_mock_improve()) {
-        return;
-    }
+void __runtimeapi_hook_initialize(){
     static auto install_wrap = std::make_shared<XpuRuntimeApiHook>();
     install_wrap->install();
 }
 
 void dh_patch_runtime() { PatchRuntimeHook::instance()->install(); }
-}
