@@ -51,7 +51,7 @@ def log(*args):
     new_args = [ctypes.c_char_p(arg.encode('utf-8')) for arg in new_args]
     return cuda_mock_impl.py_log(*new_args)
 
-cuda_version = os.environ.get('CUDA_VERSION', None)
+is_nvidia_gpu = os.environ.get('CUDA_VERSION', None) or os.environ.get('NVIDIA_VISIBLE_DEVICES', None)
 
 class ProfileDataCollection:
     def __init__(self, device):
@@ -97,7 +97,7 @@ class ProfileDataCollection:
     def statistic_data(self, data, device):
         total = 0.0
         for it in data:
-            if cuda_version:
+            if is_nvidia_gpu:
                 total += self.get_gpu_time(it)
             else:
                 total += self.get_xpu_time(it)
@@ -116,7 +116,7 @@ class ProfileDataCollection:
         with open(f"{self.device}-profile_data.json", "wt") as f:
             json.dump(self.data, f, indent=4)
 
-gProfileDataCollection = ProfileDataCollection("gpu" if cuda_version else "xpu")
+gProfileDataCollection = ProfileDataCollection("gpu" if is_nvidia_gpu else "xpu")
 gDefaultTargetLib = ["libxpucuda.so", "libcuda.so"]
 gDefaultTargetSymbols = ["__printf_chk", "printf","fprintf","__fprintf","vfprintf",]
 class __XpuRuntimeProfiler:
@@ -173,7 +173,7 @@ class __GpuRuntimeProfiler:
         gProfileDataCollection.append_gpu(op_key, self.data)
         log(f"{op_key}:{self.data}")
 
-RuntimeProfiler = __XpuRuntimeProfiler if not cuda_version else __GpuRuntimeProfiler
+RuntimeProfiler = __GpuRuntimeProfiler if is_nvidia_gpu else __XpuRuntimeProfiler
 
 
 class HookInstaller:
