@@ -176,9 +176,9 @@ def exec_shell(cmd):
     validation_log_debug(f"exec {cmd} result:{result}")
     return_code = p.close()
     if return_code is None:
-        return True
+        return 0
     validation_log_info(f"exec {cmd} failed with result:{result}")
-    return False
+    return -1
 
 def sync_pull_file(address, name, cache_dir):
     def find_file():
