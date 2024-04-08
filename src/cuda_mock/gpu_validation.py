@@ -29,6 +29,7 @@ class gpu_validation:
     def recv_tensor(self):
         return self.recv_tensor_impl()
 
+    # lhs is golden tensor
     def tensor_allclose(self, lhs, rhs):
         return str(torch.allclose(lhs, rhs, self.atol, self.rtol))
 
@@ -169,6 +170,15 @@ class socket_gpu_validation_client(gpu_validation_client):
         else:
             validation_log_info("has not connect")
 
+def exec_shell(cmd):
+    p = os.popen(cmd)
+    result = p.read().strip()
+    validation_log_debug(f"exec {cmd} result:{result}")
+    return_code = p.close()
+    if return_code is None:
+        return True
+    validation_log_info(f"exec {cmd} failed with result:{result}")
+    return False
 
 def sync_pull_file(address, name, cache_dir):
     def find_file():
@@ -184,12 +194,13 @@ def sync_pull_file(address, name, cache_dir):
             break
         time.sleep(0.001)
     bos_file_path = os.path.join(address, name)
-    os.system(f"bcecmd bos cp {bos_file_path} {cache_dir}/ -y")
+    exec_shell(f"bcecmd bos cp {bos_file_path} {cache_dir}/ -y")
+    validation_log_debug(f"pull file:{os.path.join(cache_dir, name)}")
     return os.path.join(cache_dir, name)
 
 class bos_gpu_validation_master(gpu_validation_master):
-    def __init__(self, model_key, atol, rtol, address, port):
-        super().__init__(model_key, atol, rtol, address, port)
+    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp'):
+        super().__init__(model_key, atol, rtol, address, port, cache_dir)
         if not self.address.endswith('/'):
             self.address += '/'
 
@@ -200,7 +211,7 @@ class bos_gpu_validation_master(gpu_validation_master):
 
         try_count = 3
         while try_count > 0:
-            if os.system(f"bcecmd bos cp {self.get_tensor_file_path()} {self.address} -y") == 0:
+            if exec_shell(f"bcecmd bos cp {self.get_tensor_file_path()} {self.address} -y") == 0:
                 break
             try_count -= 1
     
@@ -213,8 +224,8 @@ class bos_gpu_validation_master(gpu_validation_master):
 
 class bos_gpu_validation_client(gpu_validation_client):
 
-    def __init__(self, model_key, atol, rtol, address, port):
-        super().__init__(model_key, atol, rtol, address, port)
+    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp'):
+        super().__init__(model_key, atol, rtol, address, port, cache_dir)
         if not self.address.endswith('/'):
             self.address += '/'
 
@@ -228,7 +239,7 @@ class bos_gpu_validation_client(gpu_validation_client):
         with open(result_file, 'wt+') as f:
             f.write(result)
         
-        os.system(f"bcecmd bos cp {result_file} { self.address} -y")
+        exec_shell(f"bcecmd bos cp {result_file} { self.address} -y")
 
 token = "test6"
 def mytest_bos_master():
@@ -290,13 +301,19 @@ class GpuValidation(TorchDispatchMode):
     master is the device will be validation
     client is golden device 
     '''
-    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp'):
+    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp', use_bos=False):
         self.is_gpu = is_gpu
+        if not use_bos:
+            master = socket_gpu_validation_master
+            client = socket_gpu_validation_client
+        else:
+            master = bos_gpu_validation_master
+            client = bos_gpu_validation_client
         if is_gpu:
-            self.validation = socket_gpu_validation_client(model_key, atol, rtol, address, port, cache_dir)
+            self.validation = client(model_key, atol, rtol, address, port, cache_dir)
             validation_log_debug(f"initialize client validation completed!")
         else:
-            self.validation = socket_gpu_validation_master(model_key, atol, rtol, address, port, cache_dir)
+            self.validation = master(model_key, atol, rtol, address, port, cache_dir)
             validation_log_debug(f"initialize master validation completed!")
 
     def __torch_dispatch__(self, op, types, dev_args=(), dev_kwargs=None):
