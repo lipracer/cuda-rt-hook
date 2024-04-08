@@ -10,6 +10,9 @@ def validation_log_debug(*args):
     pass
     # print(*args)
 
+def validation_log_warn(*args):
+    print(*args)
+
 class gpu_validation:
     global_op_index = 0
 
@@ -31,7 +34,15 @@ class gpu_validation:
 
     # lhs is golden tensor
     def tensor_allclose(self, lhs, rhs):
-        return str(torch.allclose(lhs, rhs, self.atol, self.rtol))
+        error_str = ''
+        if lhs.shape != rhs.shape:
+            error_str = f"shape mismatch {lhs.shape} vs {rhs.shape}"
+        else if lhs.dtype != rhs.dtype:
+            error_str = f"dtype mismatch {lhs.dtype} vs {rhs.dtype}"
+        else:
+            error_str = str(torch.allclose(lhs, rhs, self.atol, self.rtol))
+        self.result = error_str
+        return error_str
 
     def barrier(self):
         assert False, "not implement"
@@ -177,7 +188,7 @@ def exec_shell(cmd):
     return_code = p.close()
     if return_code is None:
         return 0
-    validation_log_info(f"exec {cmd} failed with result:{result}")
+    validation_log_warn(f"exec {cmd} failed with result:{result}")
     return -1
 
 def sync_pull_file(address, name, cache_dir):
@@ -317,18 +328,17 @@ class GpuValidation(TorchDispatchMode):
             validation_log_debug(f"initialize master validation completed!")
 
     def __torch_dispatch__(self, op, types, dev_args=(), dev_kwargs=None):
-        validation_log_debug(f"will call op:{op}")
+        validation_log_info(f"will call op:{op}")
+
         result = op(*dev_args, **dev_kwargs)
-        validation_log_debug(f"{op} result type: {type(result)}")
+        
         if isinstance(result, torch.Tensor):
-            validation_log_debug(f"will validate op:{op}")
             self.validation.validate(result)
             self.validation.increase_index()
 
-            if not self.is_gpu:
-                validation_log_info(f"validate op:{op} result:{self.validation.result}")
+            validation_log_info(f"validate op:{op} result:{self.validation.result} dtype:{result.dtype} shape:{result.shape}")
         else:
-            validation_log_debug(f'skip not tensor result:{type(result)} op:{op}')
+            validation_log_info(f'skip not tensor result:{type(result)} op:{op}')
 
         return result
 
