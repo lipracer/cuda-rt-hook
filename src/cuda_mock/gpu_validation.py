@@ -231,7 +231,7 @@ class bos_gpu_validation_client(gpu_validation_client):
         os.system(f"bcecmd bos cp {result_file} { self.address} -y")
 
 token = "test6"
-def test_bos_master():
+def mytest_bos_master():
     master = bos_gpu_validation_master(token, 1e-3, 1e-3, "", 1000)
 
     lhs = torch.ones(3, 4)
@@ -242,7 +242,7 @@ def test_bos_master():
 
 
 
-def test_bos_client():
+def mytest_bos_client():
     client = bos_gpu_validation_client(token, 1e-3, 1e-3, "", 1000)
 
     lhs = torch.ones(3, 4)
@@ -254,7 +254,7 @@ def test_bos_client():
 SOCKET_PORT = 1002
 TEST_SHAPE = (1024, 2, 4)
 
-def test_socket_master():
+def mytest_socket_master():
     validation = socket_gpu_validation_master(token, 1e-3, 1e-3, "127.0.0.1", SOCKET_PORT)
 
     lhs = torch.ones(*TEST_SHAPE)
@@ -267,7 +267,7 @@ def test_socket_master():
     validation.validate(ret)
     validation.increase_index()
 
-def test_socket_client():
+def mytest_socket_client():
     validation = socket_gpu_validation_client(token, 1e-3, 1e-3, "127.0.0.1", SOCKET_PORT, "./")
 
     lhs = torch.ones(*TEST_SHAPE)
@@ -286,13 +286,17 @@ import functools
 from torch.utils._python_dispatch import TorchDispatchMode
 
 class GpuValidation(TorchDispatchMode):
-    def __init__(self, is_gpu, model_key, atol, rtol, address, port):
+    '''
+    master is the device will be validation
+    client is golden device 
+    '''
+    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp'):
         self.is_gpu = is_gpu
         if is_gpu:
-            self.validation = socket_gpu_validation_client(model_key, atol, rtol, address, port)
+            self.validation = socket_gpu_validation_client(model_key, atol, rtol, address, port, cache_dir)
             validation_log_debug(f"initialize client validation completed!")
         else:
-            self.validation = socket_gpu_validation_master(model_key, atol, rtol, address, port, "./")
+            self.validation = socket_gpu_validation_master(model_key, atol, rtol, address, port, cache_dir)
             validation_log_debug(f"initialize master validation completed!")
 
     def __torch_dispatch__(self, op, types, dev_args=(), dev_kwargs=None):
@@ -306,6 +310,8 @@ class GpuValidation(TorchDispatchMode):
 
             if not self.is_gpu:
                 validation_log_info(f"validate op:{op} result:{self.validation.result}")
+        else:
+            validation_log_debug(f'skip not tensor result:{type(result)} op:{op}')
 
         return result
 
@@ -326,8 +332,8 @@ class SimpleNN(nn.Module):
         x = self.fc2(x)  # 隐藏层到输出层的线性变换
         return x
 
-def test_validation_master():
-    with GpuValidation(False, token, 1e-3, 1e-3, "127.0.0.1", SOCKET_PORT):
+def mytest_validation_master():
+    with GpuValidation(False, token, 1e-3, 1e-3, "127.0.0.1", SOCKET_PORT, './'):
         input_size = 5
         hidden_size = 10
         output_size = 2
@@ -342,7 +348,7 @@ def test_validation_master():
         # 打印模型输出
         print("模型输出：", output)
 
-def test_validation_client():
+def mytest_validation_client():
     with GpuValidation(True, token, 1e-3, 1e-3, "127.0.0.1", SOCKET_PORT):
         input_size = 5
         hidden_size = 10
@@ -361,7 +367,7 @@ def test_validation_client():
 if __name__ == "__main__":
     if sys.argv[1] == "1":
         validation_log_info("client")
-        test_validation_client()
+        mytest_validation_client()
     else:
         validation_log_info("master")
-        test_validation_master()
+        mytest_validation_master()
