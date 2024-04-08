@@ -37,7 +37,7 @@ class gpu_validation:
         error_str = ''
         if lhs.shape != rhs.shape:
             error_str = f"shape mismatch {lhs.shape} vs {rhs.shape}"
-        else if lhs.dtype != rhs.dtype:
+        elif lhs.dtype != rhs.dtype:
             error_str = f"dtype mismatch {lhs.dtype} vs {rhs.dtype}"
         else:
             error_str = str(torch.allclose(lhs, rhs, self.atol, self.rtol))
