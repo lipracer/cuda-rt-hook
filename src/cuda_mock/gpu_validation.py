@@ -396,8 +396,7 @@ class GpuValidation(TorchDispatchMode):
     master is the device will be validation
     client is golden device 
     '''
-    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp', use_bos=True, fallback=False):
-        address = "bos:/klx-pytorch-work-bd/training/chenlonglong01/validation/sub"
+    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp', use_bos=False, fallback=False):
         self.is_gpu = is_gpu
         self.fallback = fallback
         if not use_bos:
