@@ -286,7 +286,6 @@ def bos_recv_msg(obj):
     with open(op_name_path, "rt+") as f:
         op_name = f.read().strip()
     bos_name = op_name_path.split('/')[-1]
-    print(f"{obj.address}/{bos_name}")
     assert exec_shell(f"bcecmd bos rm {os.path.join(obj.address, bos_name)} -y")==0, "clear msg fail!"
     return op_name
 
@@ -296,8 +295,6 @@ class bos_gpu_validation_master(gpu_validation_master):
         super().__init__(model_key, atol, rtol, address, port, cache_dir, fallback)
         if not self.address.endswith('/'):
             self.address += '/'
-
-
 
     def recv_msg_impl(self):
         return bos_recv_msg(self)
