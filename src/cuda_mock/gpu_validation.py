@@ -1,22 +1,23 @@
 import sys, os
 import time
 import socket
+import subprocess
 import torch
 
 def validation_log_info(*args):
-    print(*args)
+    print(f"[INFO]{''.join(args)}")
 
 def validation_log_debug(*args):
-    pass
-    # print(*args)
+    # pass
+    print(f"[DEBUG]{''.join(args)}")
 
 def validation_log_warn(*args):
-    print(*args)
+    print(f"[WARN]{''.join(args)}")
 
 class gpu_validation:
     global_op_index = 0
 
-    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp'):
+    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp', fallback=False):
         self.model_key = model_key
         self.atol = atol
         self.rtol = rtol
@@ -25,6 +26,7 @@ class gpu_validation:
         self.port = port
 
         self.cache_dir = cache_dir
+        self.fallback = fallback
 
     def send_tensor(self, tensor):
         self.send_tensor_impl(tensor)
@@ -32,9 +34,16 @@ class gpu_validation:
     def recv_tensor(self):
         return self.recv_tensor_impl()
 
+    def send_msg(self, msg):
+        self.send_msg_impl(msg)
+    
+    def recv_msg(self):
+        return self.recv_msg_impl()
+
     # lhs is golden tensor
-    def tensor_allclose(self, lhs, rhs):
+    def tensor_allclose(self, lhs, rhs, lhs_name, rhs_name):
         error_str = ''
+        assert lhs_name == rhs_name,f"op_name mismatch {lhs_name} vs {rhs_name}"
         if lhs.shape != rhs.shape:
             error_str = f"shape mismatch {lhs.shape} vs {rhs.shape}"
         elif lhs.dtype != rhs.dtype:
@@ -60,32 +69,36 @@ class gpu_validation:
     def get_tensor_file_name(self):
         return self.model_key + "_" + str(self.port) + "_" + str(self.get_op_index())
 
+    def get_golden_tensor_file_name(self):
+        return self.model_key + "_" + str(self.port) + "_" + str(self.get_op_index()) + "_golden"
+
     def get_tensor_file_path(self):
         return os.path.join(self.cache_dir, self.get_tensor_file_name())
 
 
 class gpu_validation_master(gpu_validation):
-    def __init__(self, model_key, atol, rtol, address, port, cache_dir):
-        super().__init__(model_key, atol, rtol, address, port, cache_dir)
 
-    def validate(self, tensor):
+    def validate(self, tensor, op_name):
+        self.send_msg(op_name)
         self.send_tensor(tensor)
-        self.result = self.recv_result()
+        self.result = self.recv_msg_impl()
 
-    def recv_result(self):
-        assert False, "not implement"
+        if self.fallback:
+            validation_log_debug("recv fallback tensor!")
+            self.golden_result = self.recv_tensor()
 
 class gpu_validation_client(gpu_validation):
-    def __init__(self, model_key, atol, rtol, address, port, cache_dir):
-        super().__init__(model_key, atol, rtol, address, port, cache_dir)
 
-    def validate(self, tensor):
+    def validate(self, tensor, op_name):
+        name = self.recv_msg()
         validation_tensor = self.recv_tensor()
-        result = self.tensor_allclose(tensor, validation_tensor)
-        self.send_result(result)
+        result = self.tensor_allclose(tensor, validation_tensor, op_name, name)
+        self.send_msg_impl(result)
 
-    def send_result(self):
-        assert False, "not implement"
+        if self.fallback:
+            validation_log_debug("send fallback tensor!")
+            self.send_tensor(tensor)
+
 
 socket_recv_file_length_buffer_size = 8
 socket_recv_buffer_size = 1024 * 1024
@@ -96,32 +109,67 @@ def get_file_length(file):
     file.seek(0)
     return file_length
 
+def recv_msg(socket):
+    byte_data = socket.recv(socket_recv_file_length_buffer_size)
+    msg_length = int.from_bytes(byte_data, byteorder='big')
+    byte_data = socket.recv(msg_length)
+    return byte_data.decode('utf-8')
+
+def send_msg(socket, msg):
+    bytedata = msg.encode('utf-8')
+    length = len(bytedata)
+    blength = length.to_bytes(socket_recv_file_length_buffer_size, byteorder='big')
+    socket.sendall(blength)
+    socket.sendall(bytedata)
+
+def send_tensor(obj, tensor):
+    torch.save(tensor, obj.get_tensor_file_path())
+    with open(obj.get_tensor_file_path(), 'rb') as file:
+        file_length = get_file_length(file)
+        length_bytes = file_length.to_bytes(socket_recv_file_length_buffer_size, byteorder='big')
+        obj.connection.sendall(length_bytes)
+        while True:
+            read_length = file_length if file_length < socket_recv_buffer_size else socket_recv_buffer_size
+            binary_data = file.read(read_length)
+            validation_log_debug(f"send all data size:{len(binary_data)}")
+            obj.connection.sendall(binary_data)
+            file_length -= read_length
+            if file_length == 0:
+                break
+
+def recv_tensor(obj):
+    byte_data = obj.connection.recv(socket_recv_file_length_buffer_size)
+    file_length = int.from_bytes(byte_data, byteorder='big')
+    validation_log_debug(f"validate tensor file size:{file_length}")
+    recv_length = 0
+    with open(obj.get_tensor_file_path(), 'wb') as file:
+        while True:
+            byte_data = obj.connection.recv(socket_recv_buffer_size)
+            file.write(byte_data)
+            recv_length += len(byte_data)
+            validation_log_debug(f"current recv data size:{recv_length}")
+            if recv_length == file_length:
+                break
+    return torch.load(obj.get_tensor_file_path())
+
+
 class socket_gpu_validation_master(gpu_validation_master):
-    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp'):
-        super().__init__(model_key, atol, rtol, address, port, cache_dir)
+    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp', fallback=False):
+        super().__init__(model_key, atol, rtol, address, port, cache_dir, fallback)
         self.get_socket()
 
+    def send_msg_impl(self, msg):
+        send_msg(self.connection, msg)
+
+    def recv_msg_impl(self):
+        return recv_msg(self.connection)
+
     def send_tensor_impl(self, tensor):
-        torch.save(tensor, self.get_tensor_file_path())
-        with open(self.get_tensor_file_path(), 'rb') as file:
-            file_length = get_file_length(file)
-            length_bytes = file_length.to_bytes(socket_recv_file_length_buffer_size, byteorder='big')
-            validation_log_debug(f"file length size:{len(length_bytes)}")
-            self.connection.sendall(length_bytes)
+        send_tensor(self, tensor)
 
-            while True:
-                read_length = file_length if file_length < socket_recv_buffer_size else socket_recv_buffer_size
-                binary_data = file.read(read_length)
-                validation_log_debug(f"send all data size:{len(binary_data)}")
-                self.connection.sendall(binary_data)
-                file_length -= read_length
-                if file_length == 0:
-                    break
+    def recv_tensor_impl(self):
+        return recv_tensor(self)
 
-    def recv_result(self):
-        data = self.connection.recv(socket_recv_buffer_size)
-        return data.decode('utf-8')
-    
     def get_socket(self):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -143,30 +191,21 @@ class socket_gpu_validation_master(gpu_validation_master):
             validation_log_info("has not connect")
 
 class socket_gpu_validation_client(gpu_validation_client):
-    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp'):
-        super().__init__(model_key, atol, rtol, address, port, cache_dir)
+    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp', fallback=False):
+        super().__init__(model_key, atol, rtol, address, port, cache_dir, fallback)
         self.connect()
 
+    def send_msg_impl(self, msg):
+        return send_msg(self.connection, msg)
+
+    def recv_msg_impl(self):
+        return recv_msg(self.connection)
+
+    def send_tensor_impl(self, tensor):
+        send_tensor(self, tensor)
+                
     def recv_tensor_impl(self):
-        byte_data = self.connection.recv(socket_recv_file_length_buffer_size)
-        file_length = int.from_bytes(byte_data, byteorder='big')
-        validation_log_debug(f"validate tensor file size:{file_length}")
-        recv_length = 0
-        with open(self.get_tensor_file_path(), 'wb') as file:
-            while True:
-                byte_data = self.connection.recv(socket_recv_buffer_size)
-                file.write(byte_data)
-                recv_length += len(byte_data)
-                validation_log_debug(f"current recv data size:{recv_length}")
-                if recv_length == file_length:
-                    break
-
-        return torch.load(self.get_tensor_file_path())
-
-    def send_result(self, result):
-        binary_data = result.encode('utf-8')
-        self.connection.sendall(binary_data)
-
+        return recv_tensor(self)
 
     def connect(self):
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -181,20 +220,27 @@ class socket_gpu_validation_client(gpu_validation_client):
         else:
             validation_log_info("has not connect")
 
-def exec_shell(cmd):
-    p = os.popen(cmd)
-    result = p.read().strip()
-    validation_log_debug(f"exec {cmd} result:{result}")
-    return_code = p.close()
-    if return_code is None:
-        return 0
-    validation_log_warn(f"exec {cmd} failed with result:{result}")
+def exec_shell(command):
+    validation_log_debug(f"exec command:{command}")
+    try:
+        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return result.returncode
+    except subprocess.CalledProcessError as e:
+        validation_log_warn("Error:", e)
+        return -1
     return -1
 
-def sync_pull_file(address, name, cache_dir):
+def sync_pull_file(address, name, cache_dir, fuzzy_matching=False):
+    new_file_name = ''
     def find_file():
+        nonlocal new_file_name
         for file_name in file_list:
-            if file_name.endswith(name):
+            if fuzzy_matching:
+                new_file_name = file_name.split(" ")[-1]
+                if new_file_name.startswith(name):
+                    return True
+            elif file_name.endswith(name):
+                new_file_name = name
                 return True
         return False
 
@@ -203,54 +249,92 @@ def sync_pull_file(address, name, cache_dir):
         file_list = file_list.split('\n')
         if find_file():
             break
-        time.sleep(0.001)
-    bos_file_path = os.path.join(address, name)
+        time.sleep(0.5)
+    bos_file_path = os.path.join(address, new_file_name)
     exec_shell(f"bcecmd bos cp {bos_file_path} {cache_dir}/ -y")
     validation_log_debug(f"pull file:{os.path.join(cache_dir, name)}")
-    return os.path.join(cache_dir, name)
+
+    return os.path.join(cache_dir, new_file_name)
+
+global_bos_msg_index = 0
+
+def encode_path_msg(name, msg):
+    global global_bos_msg_index
+    result = f"{name}_{global_bos_msg_index}_msg_{msg}"
+    global_bos_msg_index += 1
+    return result
+
+def bos_send_file(obj, file):
+    try_count = 3
+    while try_count > 0:
+        if exec_shell(f"bcecmd bos cp {file} {obj.address} -y") == 0:
+            break
+        try_count -= 1
+    assert try_count >= 0, "bos_send_file send {file} fail!"
+
+def bos_send_msg(obj, msg):
+    msg_path = encode_path_msg(obj.get_tensor_file_path(), msg)
+    with open(msg_path, "wt+") as f:
+        f.write(msg)
+    bos_send_file(obj, msg_path)
+
+def bos_recv_msg(obj):
+    global global_bos_msg_index
+    op_name_path = sync_pull_file(obj.address, f"{obj.get_tensor_file_name()}_{global_bos_msg_index}_msg_", obj.cache_dir, True)
+    global_bos_msg_index += 1
+    op_name = ''
+    with open(op_name_path, "rt+") as f:
+        op_name = f.read().strip()
+    bos_name = op_name_path.split('/')[-1]
+    print(f"{obj.address}/{bos_name}")
+    assert exec_shell(f"bcecmd bos rm {os.path.join(obj.address, bos_name)} -y")==0, "clear msg fail!"
+    return op_name
+
 
 class bos_gpu_validation_master(gpu_validation_master):
-    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp'):
-        super().__init__(model_key, atol, rtol, address, port, cache_dir)
+    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp', fallback=False):
+        super().__init__(model_key, atol, rtol, address, port, cache_dir, fallback)
         if not self.address.endswith('/'):
             self.address += '/'
 
+
+
+    def recv_msg_impl(self):
+        return bos_recv_msg(self)
+
+    def send_msg_impl(self, msg):
+        bos_send_msg(self, msg)
 
     def send_tensor_impl(self, tensor):
         validation_log_info(self.get_tensor_file_path())
         torch.save(tensor, self.get_tensor_file_path())
-
-        try_count = 3
-        while try_count > 0:
-            if exec_shell(f"bcecmd bos cp {self.get_tensor_file_path()} {self.address} -y") == 0:
-                break
-            try_count -= 1
-    
-    def recv_result(self):
-        result = sync_pull_file(self.address, self.get_tensor_file_name()+ "_result", self.cache_dir)
-        with open(result, 'rt+') as f:
-            result = f.read()
-            return result
-
-
-class bos_gpu_validation_client(gpu_validation_client):
-
-    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp'):
-        super().__init__(model_key, atol, rtol, address, port, cache_dir)
-        if not self.address.endswith('/'):
-            self.address += '/'
+        bos_send_file(self, self.get_tensor_file_path())
 
     def recv_tensor_impl(self):
         tensor_path = sync_pull_file(self.address, self.get_tensor_file_name(), self.cache_dir)
         return torch.load(tensor_path)
 
-    def send_result(self, result):
-        result_file = self.get_tensor_file_path()+ "_result"
-        validation_log_info("send result:", result_file)
-        with open(result_file, 'wt+') as f:
-            f.write(result)
-        
-        exec_shell(f"bcecmd bos cp {result_file} { self.address} -y")
+class bos_gpu_validation_client(gpu_validation_client):
+
+    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp', fallback=False):
+        super().__init__(model_key, atol, rtol, address, port, cache_dir, fallback)
+        if not self.address.endswith('/'):
+            self.address += '/'
+
+    def send_msg_impl(self, msg):
+        bos_send_msg(self, msg)
+
+    def recv_msg_impl(self):
+        return bos_recv_msg(self)
+
+    def send_tensor_impl(self, tensor):
+        validation_log_info(self.get_tensor_file_path())
+        torch.save(tensor, self.get_tensor_file_path())
+        bos_send_file(self, self.get_tensor_file_path())
+
+    def recv_tensor_impl(self):
+        tensor_path = sync_pull_file(self.address, self.get_tensor_file_name(), self.cache_dir)
+        return torch.load(tensor_path)
 
 token = "test6"
 def mytest_bos_master():
@@ -273,7 +357,7 @@ def mytest_bos_client():
     client.validate(ret)
     client.increase_index()
 
-SOCKET_PORT = 1002
+SOCKET_PORT = 1000
 TEST_SHAPE = (1024, 2, 4)
 
 def mytest_socket_master():
@@ -312,8 +396,10 @@ class GpuValidation(TorchDispatchMode):
     master is the device will be validation
     client is golden device 
     '''
-    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp', use_bos=False):
+    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp', use_bos=True, fallback=False):
+        address = "bos:/klx-pytorch-work-bd/training/chenlonglong01/validation/sub"
         self.is_gpu = is_gpu
+        self.fallback = fallback
         if not use_bos:
             master = socket_gpu_validation_master
             client = socket_gpu_validation_client
@@ -321,10 +407,10 @@ class GpuValidation(TorchDispatchMode):
             master = bos_gpu_validation_master
             client = bos_gpu_validation_client
         if is_gpu:
-            self.validation = client(model_key, atol, rtol, address, port, cache_dir)
+            self.validation = client(model_key, atol, rtol, address, port, cache_dir, fallback)
             validation_log_debug(f"initialize client validation completed!")
         else:
-            self.validation = master(model_key, atol, rtol, address, port, cache_dir)
+            self.validation = master(model_key, atol, rtol, address, port, cache_dir, fallback)
             validation_log_debug(f"initialize master validation completed!")
 
     def __torch_dispatch__(self, op, types, dev_args=(), dev_kwargs=None):
@@ -333,10 +419,12 @@ class GpuValidation(TorchDispatchMode):
         result = op(*dev_args, **dev_kwargs)
         
         if isinstance(result, torch.Tensor):
-            self.validation.validate(result)
-            self.validation.increase_index()
-
+            self.validation.validate(result, f"{op}")
             validation_log_info(f"validate op:{op} result:{self.validation.result} dtype:{result.dtype} shape:{result.shape}")
+            if self.fallback and not self.is_gpu:
+                self.validation.increase_index()
+                return self.validation.golden_result
+            self.validation.increase_index()
         else:
             validation_log_info(f'skip not tensor result:{type(result)} op:{op}')
 
