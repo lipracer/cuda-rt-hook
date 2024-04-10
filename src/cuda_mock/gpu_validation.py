@@ -8,8 +8,8 @@ def validation_log_info(*args):
     print(f"[INFO]{''.join(args)}")
 
 def validation_log_debug(*args):
-    # pass
-    print(f"[DEBUG]{''.join(args)}")
+    pass
+    # print(f"[DEBUG]{''.join(args)}")
 
 def validation_log_warn(*args):
     print(f"[WARN]{''.join(args)}")
@@ -419,7 +419,7 @@ class GpuValidation(TorchDispatchMode):
         
         if isinstance(result, torch.Tensor):
             self.validation.validate(result, f"{op}")
-            validation_log_info(f"validate op:{op} result:{self.validation.result} dtype:{result.dtype} shape:{result.shape}")
+            validation_log_info(f"validate op:{op} dtype:{result.dtype} shape:{result.shape} result:{self.validation.result}")
             if self.fallback and not self.is_gpu:
                 self.validation.increase_index()
                 return self.validation.golden_result
