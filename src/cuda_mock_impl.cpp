@@ -191,9 +191,9 @@ HOOK_API void create_hook_installer(PyObject* py_instance, HookString_t lib) {
     dh_create_py_hook_installer(is_target, is_symbol, lib, new_symbol);
 }
 
-HOOK_API void py_log(HookString_t str) { MLOG(PYTHON, INFO) << str; }
-
-
+HOOK_API void py_log_info(HookString_t str) { MLOG(PYTHON, INFO) << str; }
+HOOK_API void py_log_warn(HookString_t str) { MLOG(PYTHON, WARN) << str; }
+HOOK_API void py_log_error(HookString_t str) { MLOG(PYTHON, ERROR) << str; }
 }
 // namespace py = pybind11;
 

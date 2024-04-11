@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "env_util.h"
-
 static std::vector<std::string>& gLoggerLevelStringSet() {
     static std::vector<std::string> instance = {"INFO", "WARN", "ERROR",
                                                 "FATAL"};

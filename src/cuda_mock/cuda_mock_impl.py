@@ -41,15 +41,18 @@ def print_hook_initialize(target_libs, target_symbols):
 def patch_runtime():
     return cuda_mock_impl.patch_runtime()
 
-def log(*args):
+def log(*args, level=0):
     caller_frame = inspect.currentframe().f_back
     caller_filename = inspect.getframeinfo(caller_frame).filename
     caller_lineno = inspect.getframeinfo(caller_frame).lineno
-    for arg in args:
-        assert isinstance(arg, str), f"expect str type but got {type(arg)}"
     new_args = [f'[{caller_filename}:{caller_lineno}]{arg}' for arg in args]
     new_args = [ctypes.c_char_p(arg.encode('utf-8')) for arg in new_args]
-    return cuda_mock_impl.py_log(*new_args)
+    if level == 0:
+        return cuda_mock_impl.py_log_info(*new_args)
+    elif level == 1:
+        return cuda_mock_impl.py_log_warn(*new_args)
+    else:
+        return cuda_mock_impl.py_log_error(*new_args)
 
 is_nvidia_gpu = os.environ.get('CUDA_VERSION', None) or os.environ.get('NVIDIA_VISIBLE_DEVICES', None)
 

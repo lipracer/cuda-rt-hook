@@ -33,8 +33,8 @@ enum class LogModule { profile, trace, hook, python, last };
 class LogModuleHelper {
    public:
     static auto& enum_strs() {
-        static std::array<const char*, 5> strs = {"profile", "trace", "hook",
-                                                         "python", "last"};
+        static std::array<const char*, 5> strs = {"PROFILE", "TRACE", "HOOK",
+                                                         "PYTHON", "LAST"};
         return strs;
     }
     static auto begin() { return enum_strs().begin(); }
@@ -235,7 +235,7 @@ class LogStream {
     std::stringstream ss_;
     std::shared_ptr<LogConsumer> logConsumer_;
     std::shared_ptr<LogConfig> cfg_;
-    LogLevel module_set_[static_cast<size_t>(LogModule::last)] = {
+    LogLevel module_set_[static_cast<size_t>(LogModule::last) + 1] = {
         LogLevel::info};
     std::chrono::steady_clock::time_point start_point_{
         std::chrono::steady_clock::now()};
