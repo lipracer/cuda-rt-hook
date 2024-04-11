@@ -1,3 +1,4 @@
+from cuda_mock.cuda_mock_impl import *
 import sys, os
 import time
 import socket
@@ -5,14 +6,13 @@ import subprocess
 import torch
 
 def validation_log_info(*args):
-    print(f"[INFO]{''.join(args)}")
+    log(*args, 0)
 
 def validation_log_debug(*args):
-    pass
-    # print(f"[DEBUG]{''.join(args)}")
+    log(*args, 0)
 
 def validation_log_warn(*args):
-    print(f"[WARN]{''.join(args)}")
+    log(*args, 1)
 
 class gpu_validation:
     global_op_index = 0
@@ -81,7 +81,7 @@ class gpu_validation_master(gpu_validation):
     def validate(self, tensor, op_name):
         self.send_msg(op_name)
         self.send_tensor(tensor)
-        self.result = self.recv_msg_impl()
+        self.result = self.recv_result_impl()
 
         if self.fallback:
             validation_log_debug("recv fallback tensor!")
@@ -93,7 +93,7 @@ class gpu_validation_client(gpu_validation):
         name = self.recv_msg()
         validation_tensor = self.recv_tensor()
         result = self.tensor_allclose(tensor, validation_tensor, op_name, name)
-        self.send_msg_impl(result)
+        self.send_result_impl(result)
 
         if self.fallback:
             validation_log_debug("send fallback tensor!")
@@ -170,6 +170,9 @@ class socket_gpu_validation_master(gpu_validation_master):
     def recv_tensor_impl(self):
         return recv_tensor(self)
 
+    def recv_result_impl(self):
+        return self.recv_msg_impl()
+
     def get_socket(self):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -206,6 +209,9 @@ class socket_gpu_validation_client(gpu_validation_client):
                 
     def recv_tensor_impl(self):
         return recv_tensor(self)
+
+    def send_result_impl(self, result):
+        return self.send_msg_impl(result)
 
     def connect(self):
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -291,10 +297,11 @@ def bos_recv_msg(obj):
 
 
 class bos_gpu_validation_master(gpu_validation_master):
-    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp', fallback=False):
+    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp', fallback=False, offline=False):
         super().__init__(model_key, atol, rtol, address, port, cache_dir, fallback)
         if not self.address.endswith('/'):
             self.address += '/'
+        self.offline = offline
 
     def recv_msg_impl(self):
         return bos_recv_msg(self)
@@ -310,13 +317,19 @@ class bos_gpu_validation_master(gpu_validation_master):
     def recv_tensor_impl(self):
         tensor_path = sync_pull_file(self.address, self.get_tensor_file_name(), self.cache_dir)
         return torch.load(tensor_path)
+
+    def recv_result_impl(self):
+        if self.offline:
+            return ""
+        return self.recv_msg_impl()
 
 class bos_gpu_validation_client(gpu_validation_client):
 
-    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp', fallback=False):
+    def __init__(self, model_key, atol, rtol, address, port, cache_dir='/tmp', fallback=False, offline=False):
         super().__init__(model_key, atol, rtol, address, port, cache_dir, fallback)
         if not self.address.endswith('/'):
             self.address += '/'
+        self.offline = offline
 
     def send_msg_impl(self, msg):
         bos_send_msg(self, msg)
@@ -332,6 +345,11 @@ class bos_gpu_validation_client(gpu_validation_client):
     def recv_tensor_impl(self):
         tensor_path = sync_pull_file(self.address, self.get_tensor_file_name(), self.cache_dir)
         return torch.load(tensor_path)
+
+    def send_result_impl(self, result):
+        if self.offline:
+            return
+        return self.send_msg_impl(result)
 
 token = "test6"
 def mytest_bos_master():
@@ -393,9 +411,10 @@ class GpuValidation(TorchDispatchMode):
     master is the device will be validation
     client is golden device 
     '''
-    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp', use_bos=False, fallback=False):
+    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp', use_bos=False, fallback=False, offline=False):
         self.is_gpu = is_gpu
         self.fallback = fallback
+        self.offline = offline
         if not use_bos:
             master = socket_gpu_validation_master
             client = socket_gpu_validation_client
@@ -403,10 +422,10 @@ class GpuValidation(TorchDispatchMode):
             master = bos_gpu_validation_master
             client = bos_gpu_validation_client
         if is_gpu:
-            self.validation = client(model_key, atol, rtol, address, port, cache_dir, fallback)
+            self.validation = client(model_key, atol, rtol, address, port, cache_dir, fallback, offline=offline)
             validation_log_debug(f"initialize client validation completed!")
         else:
-            self.validation = master(model_key, atol, rtol, address, port, cache_dir, fallback)
+            self.validation = master(model_key, atol, rtol, address, port, cache_dir, fallback, offline=offline)
             validation_log_debug(f"initialize master validation completed!")
 
     def __torch_dispatch__(self, op, types, dev_args=(), dev_kwargs=None):
@@ -416,7 +435,8 @@ class GpuValidation(TorchDispatchMode):
         
         if isinstance(result, torch.Tensor):
             self.validation.validate(result, f"{op}")
-            validation_log_info(f"validate op:{op} dtype:{result.dtype} shape:{result.shape} result:{self.validation.result}")
+            if not self.offline or self.is_gpu:
+                validation_log_info(f"validate op:{op} dtype:{result.dtype} shape:{result.shape} result:{self.validation.result}")
             if self.fallback and not self.is_gpu:
                 self.validation.increase_index()
                 return self.validation.golden_result
