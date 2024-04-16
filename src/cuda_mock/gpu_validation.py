@@ -270,19 +270,78 @@ def encode_path_msg(name, msg):
     global_bos_msg_index += 1
     return result
 
-def bos_send_file(obj, file):
+import multiprocessing
+from multiprocessing import Queue
+import time
+from datetime import datetime
+import shutil
+from functools import partial
+
+class TaskContext:
+    def __init__(self):
+        self.queue = Queue()
+        self.p = multiprocessing.Process(
+            target=self.task_consumer,
+            args=(),
+            kwargs={},
+        )
+        self.p.start()
+    
+    def task_consumer(self):
+        while True:
+            task = self.queue.get()
+            if isinstance(task, TerminateTask):
+                break
+            task()
+
+    def put_task(self, task):
+        self.queue.put(task)
+    
+    def task_over(self):
+        validation_log_info("task over wait sync file!")
+        self.queue.put(TerminateTask())
+        self.p.join()
+
+class SimpleTask:
+    def __init__(self, file, dst_path):
+        self.file = file
+        self.dst_path = dst_path
+
+    def __call__(self):
+        try_count = 3
+        while try_count > 0:
+            if exec_shell(f"bcecmd bos cp {self.file} {self.dst_path} -y") == 0:
+                break
+            try_count -= 1
+        assert try_count >= 0, "bos_send_file send {file} fail!"
+
+class TerminateTask:
+    pass
+
+
+gTaskContext = TaskContext()
+
+def bos_send_file_impl(obj, file):
     try_count = 3
     while try_count > 0:
         if exec_shell(f"bcecmd bos cp {file} {obj.address} -y") == 0:
             break
         try_count -= 1
     assert try_count >= 0, "bos_send_file send {file} fail!"
+        
 
-def bos_send_msg(obj, msg):
+def bos_send_file(obj, file, sync=True):
+    if sync:
+        bos_send_file_impl(obj, file)
+    else:
+        gTaskContext.put_task(SimpleTask(file, obj.address))
+
+
+def bos_send_msg(obj, msg, sync=True):
     msg_path = encode_path_msg(obj.get_tensor_file_path(), msg)
     with open(msg_path, "wt+") as f:
         f.write(msg)
-    bos_send_file(obj, msg_path)
+    bos_send_file(obj, msg_path, sync)
 
 def bos_recv_msg(obj):
     global global_bos_msg_index
@@ -307,12 +366,14 @@ class bos_gpu_validation_master(gpu_validation_master):
         return bos_recv_msg(self)
 
     def send_msg_impl(self, msg):
-        bos_send_msg(self, msg)
+        sync = False if self.offline else True
+        bos_send_msg(self, msg, sync)
 
     def send_tensor_impl(self, tensor):
         validation_log_info(self.get_tensor_file_path())
         torch.save(tensor, self.get_tensor_file_path())
-        bos_send_file(self, self.get_tensor_file_path())
+        sync = False if self.offline else True
+        bos_send_file(self, self.get_tensor_file_path(), sync)
 
     def recv_tensor_impl(self):
         tensor_path = sync_pull_file(self.address, self.get_tensor_file_name(), self.cache_dir)
@@ -332,7 +393,8 @@ class bos_gpu_validation_client(gpu_validation_client):
         self.offline = offline
 
     def send_msg_impl(self, msg):
-        bos_send_msg(self, msg)
+        sync = False if self.offline else True
+        bos_send_msg(self, msg, sync)
 
     def recv_msg_impl(self):
         return bos_recv_msg(self)
@@ -340,7 +402,8 @@ class bos_gpu_validation_client(gpu_validation_client):
     def send_tensor_impl(self, tensor):
         validation_log_info(self.get_tensor_file_path())
         torch.save(tensor, self.get_tensor_file_path())
-        bos_send_file(self, self.get_tensor_file_path())
+        sync = False if self.offline else True
+        bos_send_file(self, self.get_tensor_file_path(), sync)
 
     def recv_tensor_impl(self):
         tensor_path = sync_pull_file(self.address, self.get_tensor_file_name(), self.cache_dir)
@@ -411,7 +474,7 @@ class GpuValidation(TorchDispatchMode):
     master is the device will be validation
     client is golden device 
     '''
-    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp', use_bos=False, fallback=False, offline=False):
+    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp', use_bos=True, fallback=False, offline=True):
         self.is_gpu = is_gpu
         self.fallback = fallback
         self.offline = offline
@@ -445,6 +508,8 @@ class GpuValidation(TorchDispatchMode):
             validation_log_info(f'skip not tensor result:{type(result)} op:{op}')
 
         return result
+    def __del__(self):
+        gTaskContext.task_over()
 
 
 import torch
