@@ -14,6 +14,12 @@ def validation_log_debug(*args):
 def validation_log_warn(*args):
     log(*args, 1)
 
+def subprocess_log(*args):
+    msg = ''
+    for arg in args:
+        msg += str(arg)
+    print(f"[{os.getpid()}]{msg}")
+
 class gpu_validation:
     global_op_index = 0
 
@@ -227,12 +233,12 @@ class socket_gpu_validation_client(gpu_validation_client):
             validation_log_info("has not connect")
 
 def exec_shell(command):
-    validation_log_debug(f"exec command:{command}")
+    subprocess_log(f"exec command:{command}")
     try:
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return result.returncode
     except subprocess.CalledProcessError as e:
-        validation_log_warn("Error:", e)
+        subprocess_log("Error:", e)
         return -1
     return -1
 
@@ -257,8 +263,16 @@ def sync_pull_file(address, name, cache_dir, fuzzy_matching=False):
             break
         time.sleep(0.5)
     bos_file_path = os.path.join(address, new_file_name)
-    exec_shell(f"bcecmd bos cp {bos_file_path} {cache_dir}/ -y")
-    validation_log_debug(f"pull file:{os.path.join(cache_dir, name)}")
+
+    try_count = 3
+    while try_count > 0:
+        if exec_shell(f"bcecmd bos cp {bos_file_path} {cache_dir}/ -y") == 0:
+            break
+        try_count -= 1
+    assert try_count >= 0, "bos_send_file send {file} fail!"
+
+    
+    validation_log_debug(f"pull file:{os.path.join(cache_dir, new_file_name)}")
 
     return os.path.join(cache_dir, new_file_name)
 
@@ -288,7 +302,12 @@ class TaskContext:
         self.p.start()
     
     def task_consumer(self):
+        subprocess_log(f"start background process task count:{self.queue.qsize()}")
         while True:
+            if self.queue.empty():
+                time.sleep(0.01)
+                continue
+            subprocess_log(f"remain task count:{self.queue.qsize()}")
             task = self.queue.get()
             if isinstance(task, TerminateTask):
                 break
@@ -302,6 +321,12 @@ class TaskContext:
         self.queue.put(TerminateTask())
         self.p.join()
 
+def uninitialize():
+    gTaskContext.task_over()
+
+import atexit
+atexit.register(uninitialize)
+
 class SimpleTask:
     def __init__(self, file, dst_path):
         self.file = file
@@ -311,6 +336,7 @@ class SimpleTask:
         try_count = 3
         while try_count > 0:
             if exec_shell(f"bcecmd bos cp {self.file} {self.dst_path} -y") == 0:
+                exec_shell(f"rm -f {self.file}")
                 break
             try_count -= 1
         assert try_count >= 0, "bos_send_file send {file} fail!"
@@ -351,7 +377,7 @@ def bos_recv_msg(obj):
     with open(op_name_path, "rt+") as f:
         op_name = f.read().strip()
     bos_name = op_name_path.split('/')[-1]
-    assert exec_shell(f"bcecmd bos rm {os.path.join(obj.address, bos_name)} -y")==0, "clear msg fail!"
+    # assert exec_shell(f"bcecmd bos rm {os.path.join(obj.address, bos_name)} -y")==0, "clear msg fail!"
     return op_name
 
 
@@ -407,7 +433,10 @@ class bos_gpu_validation_client(gpu_validation_client):
 
     def recv_tensor_impl(self):
         tensor_path = sync_pull_file(self.address, self.get_tensor_file_name(), self.cache_dir)
-        return torch.load(tensor_path)
+        tensor = torch.load(tensor_path)
+        exec_shell(f"rm -f {tensor_path}")
+        return tensor
+
 
     def send_result_impl(self, result):
         if self.offline:
@@ -469,13 +498,16 @@ from torch.utils._pytree import tree_flatten, tree_map
 import functools
 from torch.utils._python_dispatch import TorchDispatchMode
 
+is_nvidia_gpu = os.environ.get('CUDA_VERSION', None) or os.environ.get('NVIDIA_VISIBLE_DEVICES', None)
+validation_filter_port = os.environ.get('VALIDATION_FILTER_PORT', None)
+
 class GpuValidation(TorchDispatchMode):
     '''
     master is the device will be validation
     client is golden device 
     '''
-    def __init__(self, is_gpu, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp', use_bos=True, fallback=False, offline=True):
-        self.is_gpu = is_gpu
+    def __init__(self, model_key, atol, rtol, address, port=SOCKET_PORT, cache_dir='/tmp', use_bos=True, fallback=False, offline=True):
+        self.is_gpu = is_nvidia_gpu
         self.fallback = fallback
         self.offline = offline
         if not use_bos:
@@ -484,7 +516,7 @@ class GpuValidation(TorchDispatchMode):
         else:
             master = bos_gpu_validation_master
             client = bos_gpu_validation_client
-        if is_gpu:
+        if self.is_gpu:
             self.validation = client(model_key, atol, rtol, address, port, cache_dir, fallback, offline=offline)
             validation_log_debug(f"initialize client validation completed!")
         else:
@@ -495,6 +527,10 @@ class GpuValidation(TorchDispatchMode):
         validation_log_info(f"will call op:{op}")
 
         result = op(*dev_args, **dev_kwargs)
+
+        if validation_filter_port:
+            if self.validation.port != int(validation_filter_port):
+                return result
         
         if isinstance(result, torch.Tensor):
             self.validation.validate(result, f"{op}")
@@ -508,9 +544,6 @@ class GpuValidation(TorchDispatchMode):
             validation_log_info(f'skip not tensor result:{type(result)} op:{op}')
 
         return result
-    def __del__(self):
-        gTaskContext.task_over()
-
 
 import torch
 import torch.nn as nn
@@ -529,7 +562,7 @@ class SimpleNN(nn.Module):
         return x
 
 def mytest_validation_master():
-    with GpuValidation(False, token, 1e-3, 1e-3, "127.0.0.1", SOCKET_PORT, './'):
+    with GpuValidation(token, 1e-3, 1e-3, "", SOCKET_PORT, './'):
         input_size = 5
         hidden_size = 10
         output_size = 2
@@ -545,7 +578,7 @@ def mytest_validation_master():
         print("模型输出：", output)
 
 def mytest_validation_client():
-    with GpuValidation(True, token, 1e-3, 1e-3, "127.0.0.1", SOCKET_PORT):
+    with GpuValidation(token, 1e-3, 1e-3, "", SOCKET_PORT):
         input_size = 5
         hidden_size = 10
         output_size = 2
