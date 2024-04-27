@@ -38,8 +38,8 @@ class XpuRuntimeWrapApi {
     static int xpuCurrentDeviceId(int* devIdPtr);
 
    private:
-    decltype(&xpuMalloc) *raw_xpu_malloc_{nullptr};
-    decltype(&xpuFree) *raw_xpu_free_{nullptr};
+    decltype(&xpuMalloc) raw_xpu_malloc_{nullptr};
+    decltype(&xpuFree) raw_xpu_free_{nullptr};
     decltype(&xpuWait) raw_xpu_wait_{nullptr};
     decltype(&xpuMemcpy) raw_xpu_memcpy_{nullptr};
     decltype(&xpuSetDevice) raw_xpu_set_device_id_{nullptr};
