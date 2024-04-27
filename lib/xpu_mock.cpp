@@ -38,27 +38,12 @@ class XpuRuntimeWrapApi {
     static int xpuCurrentDeviceId(int* devIdPtr);
 
    private:
-    int (*raw_xpu_malloc_)(void**, uint64_t, int){nullptr};
-    int (*raw_xpu_free_)(void*){nullptr};
-    int (*raw_xpu_current_device_)(int*){nullptr};
-    int (*raw_xpu_wait_)(void*){nullptr};
-    int (*raw_xpu_memcpy_)(void*, const void*, uint64_t, int){nullptr};
+    decltype(&xpuMalloc) *raw_xpu_malloc_{nullptr};
+    decltype(&xpuFree) *raw_xpu_free_{nullptr};
+    decltype(&xpuWait) raw_xpu_wait_{nullptr};
+    decltype(&xpuMemcpy) raw_xpu_memcpy_{nullptr};
     decltype(&xpuSetDevice) raw_xpu_set_device_id_{nullptr};
-
-    enum class XpuMemKind { GLOBAL_MEMORY = 0, L3_MEMORY };
-
-    struct XpuDataPtr {
-        void* data_ptr;
-        uint64_t size;
-        XpuMemKind kind;
-    };
-
-    std::mutex memory_api_mutex_;
-    std::vector<std::map<void*, XpuDataPtr>> allocated_ptr_map_;
-    std::vector<uint64_t> allocated_gm_size_;
-    std::vector<uint64_t> allocated_l3_size_;
-    std::vector<uint64_t> peak_gm_size_;
-    std::vector<uint64_t> peak_l3_size_;
+    decltype(&xpuCurrentDeviceId) raw_xpu_current_device_{nullptr};
 
     friend class XpuRuntimeApiHook;
 };
@@ -68,14 +53,10 @@ XpuRuntimeWrapApi& XpuRuntimeWrapApi::instance() {
     return instance;
 }
 
-XpuRuntimeWrapApi::XpuRuntimeWrapApi()
-    : allocated_ptr_map_(kMaxXpuDeviceNum),
-      allocated_gm_size_(kMaxXpuDeviceNum, 0),
-      allocated_l3_size_(kMaxXpuDeviceNum, 0),
-      peak_gm_size_(kMaxXpuDeviceNum, 0),
-      peak_l3_size_(kMaxXpuDeviceNum, 0) {}
+XpuRuntimeWrapApi::XpuRuntimeWrapApi() {}
 
 int XpuRuntimeWrapApi::xpuMalloc(void** pDevPtr, uint64_t size, int kind) {
+    IF_ENABLE_LOG_TRACE(__func__);
     int r = 0;
     int devId = 0;
 
@@ -100,12 +81,7 @@ int XpuRuntimeWrapApi::xpuMalloc(void** pDevPtr, uint64_t size, int kind) {
         LOG(WARN) << "[XpuRuntimeWrapApi xpuMalloc][failed] "
                   << "devId=" << devId << ","
                   << "size=" << size << ","
-                  << "kind=" << kind << ","
-                  << "gm_allocated="
-                  << XpuRuntimeWrapApi::instance().allocated_gm_size_[devId]
-                  << ","
-                  << "gm_peak="
-                  << XpuRuntimeWrapApi::instance().peak_gm_size_[devId];
+                  << "kind=" << kind << ",";
         return r;
     }
 
@@ -117,16 +93,13 @@ int XpuRuntimeWrapApi::xpuMalloc(void** pDevPtr, uint64_t size, int kind) {
 }
 
 int XpuRuntimeWrapApi::xpuFree(void* devPtr) {
+    IF_ENABLE_LOG_TRACE(__func__);
     int r = 0;
     int devId = 0;
 
     CHECK(XpuRuntimeWrapApi::instance().raw_xpu_current_device_,
           "xpu_current_device not binded");
     CHECK(XpuRuntimeWrapApi::instance().raw_xpu_free_, "xpu_free not binded");
-
-    // make malloc/free sequential to obtain a trusted memory usage footprint
-    std::lock_guard<std::mutex> lock(
-        XpuRuntimeWrapApi::instance().memory_api_mutex_);
 
     r = XpuRuntimeWrapApi::instance().raw_xpu_current_device_(&devId);
     if (r != 0) {
@@ -161,11 +134,17 @@ int XpuRuntimeWrapApi::xpuMemcpy(void* dst, const void* src, uint64_t size,
 
 int XpuRuntimeWrapApi::xpuSetDevice(int devId) {
     IF_ENABLE_LOG_TRACE(__func__);
+    MLOG(PROFILE, INFO) << "[XpuRuntimeWrapApi xpuCurrentDeviceId] "
+                        << "devId=" << devId
     return XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_(devId);
 }
 
 int XpuRuntimeWrapApi::xpuCurrentDeviceId(int* devIdPtr) {
-    return XpuRuntimeWrapApi::instance().raw_xpu_current_device_(devIdPtr);
+    IF_ENABLE_LOG_TRACE(__func__);
+    int ret = XpuRuntimeWrapApi::instance().raw_xpu_current_device_(devIdPtr);
+    MLOG(PROFILE, INFO) << "[XpuRuntimeWrapApi xpuCurrentDeviceId] "
+                        << "devId=" << *devIdPtr;
+    return ret;
 }
 
 class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
