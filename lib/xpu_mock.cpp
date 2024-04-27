@@ -64,10 +64,6 @@ int XpuRuntimeWrapApi::xpuMalloc(void** pDevPtr, uint64_t size, int kind) {
           "xpu_current_device not binded");
     CHECK(XpuRuntimeWrapApi::instance().raw_xpu_malloc_, "xpu_free not binded");
 
-    // make malloc/free sequential to obtain a trusted memory usage footprint
-    std::lock_guard<std::mutex> lock(
-        XpuRuntimeWrapApi::instance().memory_api_mutex_);
-
     r = XpuRuntimeWrapApi::instance().raw_xpu_current_device_(&devId);
     if (r != 0) {
         return r;
@@ -81,7 +77,7 @@ int XpuRuntimeWrapApi::xpuMalloc(void** pDevPtr, uint64_t size, int kind) {
         LOG(WARN) << "[XpuRuntimeWrapApi xpuMalloc][failed] "
                   << "devId=" << devId << ","
                   << "size=" << size << ","
-                  << "kind=" << kind << ",";
+                  << "kind=" << kind;
         return r;
     }
 
@@ -135,7 +131,7 @@ int XpuRuntimeWrapApi::xpuMemcpy(void* dst, const void* src, uint64_t size,
 int XpuRuntimeWrapApi::xpuSetDevice(int devId) {
     IF_ENABLE_LOG_TRACE(__func__);
     MLOG(PROFILE, INFO) << "[XpuRuntimeWrapApi xpuCurrentDeviceId] "
-                        << "devId=" << devId
+                        << "devId=" << devId;
     return XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_(devId);
 }
 
