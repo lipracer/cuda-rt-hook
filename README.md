@@ -77,3 +77,11 @@
 
 ### debug
 - ```export LOG_LEVEL=WARN,TRACE=INFO```
+
+### 环境变量
+
+| 环境变量 | 用法示例 | 可选值 | 默认值 | 说明 |
+| ------ | ------- | ----- | ----- | ---- |
+| LOG_LEVEL | `export LOG_LEVEL=WARN,TRACE=INFO` | 日志级别有:INFO,WARN,ERROR,FATAL, 日志模块有: PROFILE,TRACE,HOOK,PYTHON,LAST | 全局日志级别默认为WARN,各个日志模块的默认日志级别为INFO | 日志级别, 日志模块级别 |
+| HOOK_DISABLE_TRACE | `export HOOK_DISABLE_TRACE='xpuMemcpy=0,xpuSetDevice=0'`  | xpuMalloc,xpuFree,xpuWait,xpuMemcpy,xpuSetDevice,xpuCurrentDeviceId | 默认所有接口的的值均为1,即所有接口默认关闭backtrace | 是否关闭backtrace |
+| LOG_OUTPUT_PATH |  `export LOG_OUTPUT_PATH='cuda_mock.log'` |  文件路径 | - | 是否将日志重定向到文件 |
