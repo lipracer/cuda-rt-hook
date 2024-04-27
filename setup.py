@@ -53,7 +53,7 @@ class CMakeBuild(build_ext):
 
 setup(
     name="cuda-mock",
-    version="0.1.6",
+    version="0.1.7",
     author="lipracer",
     author_email="lipracer@gmail.com",
     description="a tools hook some api call at runtime",
