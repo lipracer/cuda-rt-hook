@@ -199,6 +199,10 @@ class LogStream {
     void flush();
 
     LogLevel getLevel() const { return level_; }
+    void setLevel(LogLevel level) { level_ = level; }
+    void setModuleLevel(LogModule m, LogLevel level) {
+        module_set_[static_cast<int>(m)] = level;
+    }
 
     bool IsModuleEnable(size_t m, size_t l) {
         return l >= static_cast<size_t>(module_set_[m]);
@@ -295,9 +299,7 @@ struct LogWrapper {
     }
 
     ~LogWrapper() {
-        if (LOG_CONDITATION(level_)) {
-            LogStream::instance().flush();
-        }
+        LogStream::instance().flush();
         totalDur += std::chrono::high_resolution_clock::now() - st_;
         // crash here
         if (LOGGER_UNLIKELY(level_ == LogLevel::fatal)) {
@@ -313,33 +315,19 @@ struct MLogWrapper : public LogWrapper {
     explicit MLogWrapper(const char* module, LogLevel level, const char* str)
         : LogWrapper(level, str), module_(module) {}
 
-    ~MLogWrapper() {
-        if (MLOG_CONDITATION(module_, level_)) {
-            LogStream::instance().flush();
-        }
-        totalDur += std::chrono::high_resolution_clock::now() - st_;
-        // crash here
-        if (LOGGER_UNLIKELY(level_ == LogLevel::fatal)) {
-            LogStream::instance().log_fatal();
-        }
-    }
 
     const char* module_;
 };
 
 template <typename T>
 static const LogWrapper& operator<<(const LogWrapper& s, T&& t) {
-    if (LOG_CONDITATION(s.level_)) {
-        LogStream::instance() << std::forward<T>(t);
-    }
+    LogStream::instance() << std::forward<T>(t);
     return s;
 }
 
 template <typename T>
 static const MLogWrapper& operator<<(const MLogWrapper& s, T&& t) {
-    if (MLOG_CONDITATION(s.module_, s.level_)) {
-        LogStream::instance() << std::forward<T>(t);
-    }
+    LogStream::instance() << std::forward<T>(t);
     return s;
 }
 

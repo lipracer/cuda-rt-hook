@@ -20,6 +20,9 @@
 #include <vector>
 
 #include "env_util.h"
+#include "env_mgr.h"
+
+
 static std::vector<std::string>& gLoggerLevelStringSet() {
     static std::vector<std::string> instance = {"INFO", "WARN", "ERROR",
                                                 "FATAL"};
@@ -235,7 +238,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
           exit_(false),
           cfg_(cfg) {
         tmpBuffer_.resize(256);
-        auto path = hook::get_env_value<std::string>("LOG_OUTPUT_PATH");
+        auto path = hook::get_env_value<std::string>(env_mgr::LOG_OUTPUT_PATH);
         if (!path.empty()) {
             path = getFileName(path);
             cfg_->stream = fopen(path.c_str(), "wt+");
@@ -431,7 +434,8 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
                      const std::shared_ptr<LogConfig>& cfg)
     : logConsumer_(logConsumer), cfg_(cfg) {
     auto modules = hook::get_env_value<
-        std::vector<std::pair<std::string, logger::LogLevel>>>("LOG_LEVEL");
+        std::vector<std::pair<std::string, logger::LogLevel>>>(
+        env_mgr::LOG_LEVEL);
     std::fill(std::begin(module_set_), std::end(module_set_),
               logger::LogLevel::warning);
     for (auto name : LogModuleHelper::enum_strs()) {

@@ -73,3 +73,45 @@ TEST(logger, overflow) {
     }
     LOG(WARN) << large_msg;
 }
+
+TEST(LoggerBase, loglevel) {
+    logger::LogStream::instance().setLevel(logger::LogLevel::warning);
+    LOG(INFO) << "123";
+    LOG(WARN) << "456";
+    LOG(ERROR) << "789";
+
+    logger::LogStream::instance().setLevel(logger::LogLevel::info);
+    LOG(INFO) << "123";
+    LOG(WARN) << "456";
+    LOG(ERROR) << "789";
+}
+
+TEST(LoggerBase, Mloglevel) {
+    logger::LogStream::instance().setModuleLevel(logger::LogModule::profile,
+                                                 logger::LogLevel::info);
+    MLOG(PROFILE, INFO) << "123";
+    MLOG(PROFILE, WARN) << "123";
+    MLOG(PYTHON, INFO) << "123";
+    MLOG(PYTHON, WARN) << "123";
+
+    logger::LogStream::instance().setModuleLevel(logger::LogModule::profile,
+                                                 logger::LogLevel::warning);
+
+    logger::LogStream::instance().setModuleLevel(logger::LogModule::python,
+                                                 logger::LogLevel::info);
+    MLOG(PROFILE, INFO) << "123";
+    MLOG(PROFILE, WARN) << "123";
+    MLOG(PYTHON, INFO) << "123";
+    MLOG(PYTHON, WARN) << "123";
+}
+
+void goDie() { LOG(FATAL) << "go die"; }
+
+TEST(LoggerBase, fatal) {
+    // write to buffer
+    for (size_t i = 0; i < 100; ++i) {
+        LOG(WARN) << "123";
+    }
+    // test wait flush buffer
+    ASSERT_DEATH(goDie(), "");
+}
