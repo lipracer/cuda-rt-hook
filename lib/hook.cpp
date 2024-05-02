@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <regex.h>
 
 #include <atomic>
 #include <fstream>
@@ -26,6 +27,8 @@
 
 #include "cuda_types.h"
 #include "logger/logger.h"
+#include "env_mgr.h"
+#include "env_util.h"
 
 #if defined __x86_64__ || defined __x86_64
 #define R_JUMP_SLOT R_X86_64_JUMP_SLOT
@@ -223,11 +226,31 @@ unknown_perms:
     return 0;
 }
 
+static bool isTargetLibFromEnv(const char* libName) {
+    static std::string pattern =
+        hook::get_env_value<std::string>(env_mgr::TARGET_LIB_FILTER);
+    if (pattern.empty()) {
+        return true;
+    }
+    static regex_t regex;
+    static int comp_result = regcomp(&regex, pattern.c_str(), 0);
+    if (comp_result) {
+        LOG(WARN) << "ilegal regex pattern:" << pattern;
+        return true;
+    }
+    int reti = regexec(&regex, libName, 0, nullptr, 0);
+    if (reti == REG_NOMATCH) {
+        return false;
+    }
+    return reti == 0;
+}
+
 int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
     CHECK(installer.isTargetLib, "isTargetLib can't be empty!");
     CHECK(installer.isTargetSymbol, "isTargetSymbol can't be empty!");
     CHECK(installer.newFuncPtr, "new_func_ptr can't be empty!");
-    if (!installer.isTargetLib(pltTable->lib_name.c_str())) {
+    if (!installer.isTargetLib(pltTable->lib_name.c_str()) ||
+        !isTargetLibFromEnv(pltTable->lib_name.c_str())) {
         return -1;
     }
     size_t index = 0;

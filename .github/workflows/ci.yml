@@ -29,7 +29,7 @@ jobs:
 
     - name: Run cpp tests
       run: |
-        cmake -S . -B build -DCMAKE_INSTALL_PREFIX=`$pwd/`build
+        cmake -S . -B build -DCMAKE_INSTALL_PREFIX=`$pwd/`build -DENABLE_BUILD_WITH_GTEST=ON
         cmake --build build
         cd build
         ctest -R

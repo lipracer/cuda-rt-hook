@@ -171,7 +171,8 @@ struct DHRegexHook : public hook::HookInstallerWrap<DHRegexHook> {
             /* Compile regular expression */
             reti = regcomp(&regex, pattern.c_str(), 0);
             if (reti) {
-                break;
+                LOG(WARN) << "ilegal regex pattern:" << pattern;
+                return false;
             }
             /* Execute regular expression */
             reti = regexec(&regex, str, 0, nullptr, 0);
