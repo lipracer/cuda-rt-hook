@@ -33,7 +33,7 @@ void HookRuntimeContext::dump() {
     }
 
     for (const auto& it : statistic_map) {
-        ss << "library name:" << it.first << "\n" << it.second.str();
+        ss << "library name:" << it.first << "\n" << it.second.str() << "\n";
     }
     LOG(WARN) << "dump context map:\n" << ss.str();
 }

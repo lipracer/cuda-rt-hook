@@ -15,7 +15,7 @@
     vsprintf(buf, fmt, args);                     \
     va_end(args);                                 \
     XpuRuntimePrintfHook::instance()->save_to_internel_buffer(buf); \
-    printf("%s", buf);
+    MLOG(PROFILE, WARN) << buf;
 
 
 static int builtin_printf_chk(int flag, const char* fmt, ...) {
