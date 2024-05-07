@@ -10,9 +10,9 @@
 #include "env_util.h"
 #include "env_mgr.h"
 
-static bool disable_log_backtrace(const char* func) {
+static bool enable_log_backtrace(const char* func) {
     auto ctrl = hook::get_env_value<std::vector<std::pair<std::string, int>>>(
-        env_mgr::HOOK_DISABLE_TRACE);
+        env_mgr::HOOK_ENABLE_TRACE);
     auto iter = std::find_if(ctrl.begin(), ctrl.end(),
                              [&](auto& pair) { return pair.first == func; });
     if (iter != ctrl.end()) {
@@ -23,7 +23,7 @@ static bool disable_log_backtrace(const char* func) {
 
 #define IF_ENABLE_LOG_TRACE(func)                                            \
     do {                                                                     \
-        if (!disable_log_backtrace(func)) {                                  \
+        if (enable_log_backtrace(func)) {                                    \
             trace::CallFrames callFrames;                                    \
             callFrames.CollectNative();                                      \
             callFrames.CollectPython();                                      \

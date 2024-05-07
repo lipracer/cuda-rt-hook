@@ -6,7 +6,7 @@ namespace env_mgr {
 
 extern const char* LOG_LEVEL;
 
-extern const char* HOOK_DISABLE_TRACE;
+extern const char* HOOK_ENABLE_TRACE;
 
 extern const char* LOG_OUTPUT_PATH;
 
