@@ -46,10 +46,6 @@
     import paddle
     import cuda_mock; cuda_mock.xpu_initialize() # 加入这一行
     ```
-- 关闭打印backtrace（获取backtrace性能下降比较严重）
-    ```
-    export HOOK_DISABLE_TRACE='xpuMemcpy=0,xpuSetDevice=0'
-    ```
 
 ### 实现自定义hook函数  
 - 实现自定义hook installer例子:
