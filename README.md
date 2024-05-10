@@ -46,6 +46,11 @@
     import paddle
     import cuda_mock; cuda_mock.xpu_initialize() # 加入这一行
     ```
+    或者
+    ```python
+    import pytorch
+    import cuda_mock; cuda_mock.xpu_initialize() # 加入这一行
+    ```
 
 ### 实现自定义hook函数  
 - 实现自定义hook installer例子:
