@@ -15,6 +15,7 @@
 #include "backtrace.h"
 #include "hook.h"
 #include "logger/StringRef.h"
+#include "logger/StringRef.h"
 #include "logger/logger.h"
 #include "statistic.h"
 #include "support.h"
@@ -143,13 +144,59 @@ int XpuRuntimeWrapApi::xpuCurrentDeviceId(int* devIdPtr) {
     return ret;
 }
 
+//-------------------------- cuda api --------------------------//
+
+namespace {
+
+typedef int (*CudaMalloc_t)(void** devPtr, size_t size);
+typedef int (*CudaFree_t)(void* devPtr);
+typedef int (*CudaMemcpy_t)(void* dst, const void* src, size_t count, int kind);
+typedef int (*CudaSetDevice_t)(int);
+typedef int (*CudaGetDevice_t)(int*);
+
+CudaMalloc_t origin_cudaMalloc = nullptr;
+CudaFree_t origin_cudaFree = nullptr;
+CudaMemcpy_t origin_cudaMemcpy = nullptr;
+CudaSetDevice_t origin_cudaSetDevice = nullptr;
+CudaGetDevice_t origin_cudaGetDevice = nullptr;
+
+int cudaMalloc(void** devPtr, size_t size) {
+    IF_ENABLE_LOG_TRACE(__func__);
+    return origin_cudaMalloc(devPtr, size);
+}
+
+int cudaFree(void* devPtr) {
+    IF_ENABLE_LOG_TRACE(__func__);
+    return origin_cudaFree(devPtr);
+}
+
+int cudaMemcpy(void* dst, const void* src, size_t count, int kind) {
+    IF_ENABLE_LOG_TRACE(__func__);
+    return origin_cudaMemcpy(dst, src, count, kind);
+}
+
+int cudaSetDevice(int device) {
+    IF_ENABLE_LOG_TRACE(__func__);
+    return origin_cudaSetDevice(device);
+}
+
+int cudaGetDevice(int* device) {
+    IF_ENABLE_LOG_TRACE(__func__);
+    return origin_cudaGetDevice(device);
+}
+
+}  // namespace
+
+#define BUILD_FEATURE(name) hook::HookFeature(#name, &name, &origin_##name)
+
 class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
    public:
     bool targetLib(const char* name) {
-        return !strstr(name, "libxpurt.so.1") && !strstr(name, "libxpurt.so");
+        return !adt::StringRef(name).contain("libxpurt.so") &&
+               !adt::StringRef(name).contain("libcudart.so");
     }
 
-    hook::HookFeature symbols[6] = {
+    hook::HookFeature symbols[11] = {
         // malloc
         hook::HookFeature("xpu_malloc", &XpuRuntimeWrapApi::xpuMalloc,
                           &XpuRuntimeWrapApi::instance().raw_xpu_malloc_),
@@ -170,7 +217,14 @@ class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
         // set_device
         hook::HookFeature(
             "xpu_set_device", &XpuRuntimeWrapApi::xpuSetDevice,
-            &XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_)};
+            &XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_),
+
+        BUILD_FEATURE(cudaMalloc),
+        BUILD_FEATURE(cudaFree),
+        BUILD_FEATURE(cudaMemcpy),
+        BUILD_FEATURE(cudaSetDevice),
+        BUILD_FEATURE(cudaGetDevice),
+    };
 
     void onSuccess() { LOG(WARN) << "install " << curSymName() << " success"; }
 };

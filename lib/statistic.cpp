@@ -9,10 +9,12 @@ namespace hook {
 
 namespace {
 std::string shortLibName(const std::string& full_lib_name) {
+#if 0
     auto pos = full_lib_name.find_last_of('/');
     if (pos != std::string::npos) {
         return full_lib_name.substr(pos + 1);
     }
+#endif
     return full_lib_name;
 }
 }  // namespace

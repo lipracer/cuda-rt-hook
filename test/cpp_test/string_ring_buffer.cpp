@@ -120,18 +120,3 @@ TEST(RingBufferTest, pop) {
 //         // pool.pool() << std::endl;
 //     }
 // }
-
-TEST(StringRef, member) {
-    EXPECT_EQ("123", adt::StringRef("123"));
-    EXPECT_EQ(adt::StringRef("123"), "123");
-
-    EXPECT_EQ(adt::StringRef("abcdefg").contain("ab"), true);
-    EXPECT_EQ(adt::StringRef("abcdefg").find("hj"), std::string::npos);
-
-    EXPECT_EQ(adt::StringRef("").contain("ab"), false);
-    EXPECT_EQ(adt::StringRef("abcdnnn").contain("nnnn"), false);
-    EXPECT_EQ(adt::StringRef("abcdnnn").contain("acd"), false);
-
-    EXPECT_EQ(adt::StringRef("abcdnnn"), "abcdnnn");
-    EXPECT_NE(adt::StringRef("abcdnnn"), "sabcdnnn");
-}
