@@ -48,7 +48,7 @@
     ```
     或者
     ```python
-    import pytorch
+    import torch
     import cuda_mock; cuda_mock.xpu_initialize() # 加入这一行
     ```
 
