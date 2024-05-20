@@ -153,12 +153,14 @@ typedef int (*CudaFree_t)(void* devPtr);
 typedef int (*CudaMemcpy_t)(void* dst, const void* src, size_t count, int kind);
 typedef int (*CudaSetDevice_t)(int);
 typedef int (*CudaGetDevice_t)(int*);
+typedef int (*xpu_launch_async_t)(void*);
 
 CudaMalloc_t origin_cudaMalloc = nullptr;
 CudaFree_t origin_cudaFree = nullptr;
 CudaMemcpy_t origin_cudaMemcpy = nullptr;
 CudaSetDevice_t origin_cudaSetDevice = nullptr;
 CudaGetDevice_t origin_cudaGetDevice = nullptr;
+xpu_launch_async_t origin_xpu_launch_async = nullptr;
 
 int cudaMalloc(void** devPtr, size_t size) {
     IF_ENABLE_LOG_TRACE(__func__);
@@ -185,6 +187,16 @@ int cudaGetDevice(int* device) {
     return origin_cudaGetDevice(device);
 }
 
+int xpu_launch_async(void* func) {
+    IF_ENABLE_LOG_TRACE(__func__);
+    auto name_address = reinterpret_cast<char*>(func) + 0x28;
+    char buf[256];
+    mempcpy(buf, name_address, sizeof(buf));
+    buf[sizeof(buf) - 1] = '\0';
+    MLOG(PROFILE, INFO) << buf;
+    return origin_xpu_launch_async(func);
+}
+
 }  // namespace
 
 #define BUILD_FEATURE(name) hook::HookFeature(#name, &name, &origin_##name)
@@ -196,7 +208,7 @@ class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
                !adt::StringRef(name).contain("libcudart.so");
     }
 
-    hook::HookFeature symbols[11] = {
+    hook::HookFeature symbols[12] = {
         // malloc
         hook::HookFeature("xpu_malloc", &XpuRuntimeWrapApi::xpuMalloc,
                           &XpuRuntimeWrapApi::instance().raw_xpu_malloc_),
@@ -224,6 +236,7 @@ class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
         BUILD_FEATURE(cudaMemcpy),
         BUILD_FEATURE(cudaSetDevice),
         BUILD_FEATURE(cudaGetDevice),
+        BUILD_FEATURE(xpu_launch_async),
     };
 
     void onSuccess() { LOG(WARN) << "install " << curSymName() << " success"; }

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <iosfwd>
 #include <map>
@@ -90,6 +91,7 @@ class HookRuntimeContext {
 
     struct Statistic {
         void increase() const { ++counter_; }
+        void increase_cost(size_t time) { cost_ += time; }
         Statistic() = default;
         Statistic(const Statistic& other) { counter_.store(other.counter_); }
         Statistic(Statistic&& other) { counter_.store(other.counter_); }
@@ -106,6 +108,7 @@ class HookRuntimeContext {
 
        private:
         mutable std::atomic<size_t> counter_{0};
+        mutable std::atomic<size_t> cost_{0};
     };
 
     struct StatisticPair : public std::pair<void*, void*>, public Statistic {
@@ -134,12 +137,12 @@ class HookRuntimeContext {
         return std::distance(func_infos_.begin(), iter);
     }
 
-    vec_type::const_iterator& current_iter() {
-        thread_local static vec_type::const_iterator iter;
+    vec_type::iterator& current_iter() {
+        thread_local static vec_type::iterator iter;
         return iter;
     }
 
-    vec_type::const_iterator setCurrentState(size_t UniqueId) {
+    vec_type::iterator setCurrentState(size_t UniqueId) {
         current_iter() = func_infos_.begin();
         std::advance(current_iter(), UniqueId);
         current_iter()->second.increase();
@@ -179,10 +182,56 @@ constexpr size_t hash(const char (&str)[N]) {
     return v;
 }
 
+template <typename IterT>
+class TimeStatisticWrapIter {
+   public:
+    using Deleter = std::function<void(std::chrono::milliseconds)>;
+
+    TimeStatisticWrapIter(IterT iter, Deleter deleter = {})
+        : iter_(iter), deleter_(deleter) {
+        sp_ = std::chrono::steady_clock::now();
+    }
+
+    TimeStatisticWrapIter(const TimeStatisticWrapIter&) = delete;
+    TimeStatisticWrapIter& operator=(const TimeStatisticWrapIter&) = delete;
+
+    TimeStatisticWrapIter(TimeStatisticWrapIter&& other) {
+        *this = std::move(other);
+    }
+    TimeStatisticWrapIter& operator=(TimeStatisticWrapIter&& other) {
+        iter_ = other.iter_;
+        deleter_ = other.deleter_;
+        sp_ = other.sp_;
+        return *this;
+    }
+
+    ~TimeStatisticWrapIter() {
+        auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - sp_);
+        deleter_(dur);
+    }
+
+    auto operator->() { return &*iter_; }
+
+   private:
+    IterT iter_;
+    Deleter deleter_;
+    decltype(std::chrono::steady_clock::now()) sp_;
+};
+
+template <size_t UniqueId>
+auto wrapCurrentIter() {
+    auto iter = HookRuntimeContext::instance().setCurrentState(UniqueId);
+    return TimeStatisticWrapIter<HookRuntimeContext::vec_type::iterator>(
+        iter, [=](std::chrono::milliseconds dur) {
+            iter->second.increase_cost(dur.count());
+        });
+}
+
 template <size_t UniqueId, typename R, typename... Args>
 struct MapedFunc {
     static R func(Args... args) {
-        auto iter = HookRuntimeContext::instance().setCurrentState(UniqueId);
+        auto iter = wrapCurrentIter<UniqueId>();
         return reinterpret_cast<R (*)(Args...)>(iter->second.second)(args...);
     }
 };
@@ -190,7 +239,7 @@ struct MapedFunc {
 template <size_t UniqueId, typename... Args>
 struct MapedFunc<UniqueId, void, Args...> {
     static void func(Args... args) {
-        auto iter = HookRuntimeContext::instance().setCurrentState(UniqueId);
+        auto iter = wrapCurrentIter<UniqueId>();
         reinterpret_cast<void (*)(Args...)>(iter->second.second)(args...);
     }
 };
