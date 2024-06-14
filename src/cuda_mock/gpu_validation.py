@@ -14,12 +14,6 @@ def validation_log_debug(*args):
 def validation_log_warn(*args):
     log(*args, 1)
 
-def subprocess_log(*args):
-    msg = ''
-    for arg in args:
-        msg += str(arg)
-    print(f"[{os.getpid()}]{msg}")
-
 class gpu_validation:
     global_op_index = 0
 
@@ -233,12 +227,12 @@ class socket_gpu_validation_client(gpu_validation_client):
             validation_log_info("has not connect")
 
 def exec_shell(command):
-    subprocess_log(f"exec command:{command}")
+    validation_log_info(f"exec command:{command}")
     try:
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return result.returncode
     except subprocess.CalledProcessError as e:
-        subprocess_log("Error:", e)
+        validation_log_warn("Error:", e)
         return -1
     return -1
 
@@ -302,12 +296,12 @@ class TaskContext:
         self.p.start()
     
     def task_consumer(self):
-        subprocess_log(f"start background process task count:{self.queue.qsize()}")
+        validation_log_info(f"start background process task count:{self.queue.qsize()}")
         while True:
             if self.queue.empty():
                 time.sleep(0.01)
                 continue
-            subprocess_log(f"remain task count:{self.queue.qsize()}")
+            validation_log_info(f"remain task count:{self.queue.qsize()}")
             task = self.queue.get()
             if isinstance(task, TerminateTask):
                 break

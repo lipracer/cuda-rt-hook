@@ -14,6 +14,7 @@
 
 #include "GlobalVarMgr.h"
 #include "logger/logger.h"
+#include "backtrace.h"
 
 #define HOOK_API __attribute__((__visibility__("default")))
 
@@ -189,7 +190,7 @@ class TimeStatisticWrapIter {
 
     TimeStatisticWrapIter(IterT iter, Deleter deleter = {})
         : iter_(iter), deleter_(deleter) {
-        sp_ = std::chrono::steady_clock::now();
+        reset();
     }
 
     TimeStatisticWrapIter(const TimeStatisticWrapIter&) = delete;
@@ -211,7 +212,14 @@ class TimeStatisticWrapIter {
         deleter_(dur);
     }
 
-    auto operator->() { return &*iter_; }
+    void reset() { sp_ = std::chrono::steady_clock::now(); }
+
+    auto operator->() {
+        IF_ENABLE_LOG_TRACE(
+            HookRuntimeContext::instance().curSymName().c_str());
+        reset();
+        return &*iter_;
+    }
 
    private:
     IterT iter_;
