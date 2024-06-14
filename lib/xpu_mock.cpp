@@ -112,6 +112,8 @@ int XpuRuntimeWrapApi::xpuFree(void* devPtr) {
         hook::HookRuntimeContext::instance().curLibName(), devId, devPtr);
 
     if (r != 0) {
+        LOG(WARN) << "malloc device memory failed!\n"
+                  << hook::MemoryStatisticCollection::instance();
         return r;
     }
 
