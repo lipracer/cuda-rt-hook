@@ -12,7 +12,17 @@ namespace hook {
 inline std::string alignWith(const std::string& str, size_t size = 32) {
     size_t align_size = str.size() >= size ? 1 : size - str.size();
     return std::string(align_size, ' ');
-};
+}
+
+inline std::string alignWith(std::string&& str, size_t size = 32) {
+    size_t align_size = str.size() >= size ? 1 : size - str.size();
+    return std::string(align_size, ' ');
+}
+
+template <typename T>
+inline std::string alignWith(T&& t, size_t size = 32) {
+    return alignWith(std::to_string(std::forward<T>(t)), size);
+}
 
 class MemoryStatistic {
    public:

@@ -38,13 +38,6 @@ class StringRef {
 
     const char* data() const { return str_; }
 
-    bool operator==(StringRef other) const {
-        return size_ == other.size_ &&
-               (str_ == other.str_ || !strcmp(str_, other.str_));
-    }
-
-    bool operator!=(StringRef other) const { return !(*this == other); }
-
     std::string::size_type find(StringRef other) {
         auto p = strstr(str_, other.c_str());
         if (!p) {
@@ -57,19 +50,20 @@ class StringRef {
         return find(other) != std::string::npos;
     }
 
+    friend inline bool operator==(StringRef lhs, StringRef rhs);
+    friend inline bool operator!=(StringRef lhs, StringRef rhs);
+
    private:
     size_t size_;
     const CharT* str_;
 };
 
-inline bool operator==(StringRef lhs, const char* rhs) {
-    return lhs == StringRef(rhs);
+inline bool operator==(StringRef lhs, StringRef rhs) {
+    return lhs.size_ == rhs.size_ &&
+           (lhs.str_ == rhs.str_ || !strcmp(lhs.str_, rhs.str_));
 }
 
-inline bool operator==(const char* lhs, StringRef rhs) {
-    return StringRef(lhs) == rhs;
-}
-
+inline bool operator!=(StringRef lhs, StringRef rhs) { return !(lhs == rhs); }
 
 inline std::ostream& operator<<(std::ostream& os, StringRef str) {
     os << str.str();

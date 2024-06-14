@@ -42,7 +42,7 @@ void HookRuntimeContext::dump() {
 
 std::ostream& operator<<(std::ostream& os,
                          const HookRuntimeContext::Statistic& s) {
-    os << "total call:" << s.counter_ << " times"
+    os << "total call:" << s.counter_ << alignWith(s.counter_, 5) << " times"
        << " total cost:" << s.cost_ << "ms";
     return os;
 }
