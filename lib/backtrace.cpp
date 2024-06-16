@@ -6,11 +6,15 @@
 #include <errno.h>
 #include <execinfo.h>
 #include <frameobject.h>
+#if PY_VERSION_HEX >= 0X030C0000
+#include <pytypedefs.h>
+#endif
 #include <unistd.h>
 
 #include <algorithm>
 #include <fstream>
 #include <regex>
+#include <iomanip>
 
 #include "logger/logger.h"
 #include "support.h"
@@ -29,12 +33,13 @@ bool CallFrames::CollectNative() {
         return false;
     }
     Dl_info info;
+    auto align_length = std::to_string(num).size();
     for (int j = 0; j < num; j++) {
         if (dladdr(buffers_[j], &info) && info.dli_sname) {
             auto demangled = __support__demangle(info.dli_sname);
             std::string path(info.dli_fname);
             std::stringstream ss;
-            ss << "    frame " << j << path << ":" << demangled;
+            ss << "    frame #" << std::setw(align_length) << std::right << j << " " << path << ":" << demangled;
             native_frames_.push_back(ss.str());
         } else {
             // filtering useless print
@@ -48,7 +53,7 @@ bool CallFrames::CollectNative() {
 bool CallFrames::CollectPython() {
     python_frames_.clear();
     python_frames_.reserve(kMaxStackDeep);
-#if PY_VERSION_HEX < 0X030C0000
+//#if PY_VERSION_HEX < 0X030C0000
     // https://stackoverflow.com/questions/33637423/pygilstate-ensure-after-py-finalize
     if (!Py_IsInitialized()) {
         LOG(WARN) << "python process finished!";
@@ -59,36 +64,53 @@ bool CallFrames::CollectPython() {
     PyGILState_STATE gstate = PyGILState_Ensure();
     // https://stackoverflow.com/questions/1796510/accessing-a-python-traceback-from-the-c-api
     PyThreadState* tstate = PyThreadState_GET();
-    if (NULL != tstate && NULL != tstate->frame) {
+    if (tstate) {
+#if PY_VERSION_HEX < 0X030C0000
         PyFrameObject* frame = tstate->frame;
-
+#else
+        PyFrameObject* frame = PyThreadState_GetFrame(tstate);
+#endif
         while (NULL != frame) {
             // int line = frame->f_lineno;
             /*
             frame->f_lineno will not always return the correct line number
             you need to call PyCode_Addr2Line().
             */
+#if PY_VERSION_HEX < 0X030C0000
             int line = PyCode_Addr2Line(frame->f_code, frame->f_lasti);
             const char* filename = PyUnicode_AsUTF8(frame->f_code->co_filename);
             const char* funcname = PyUnicode_AsUTF8(frame->f_code->co_name);
+#else
+            int line = PyFrame_GetLineNumber(frame);
+            auto code_obj = PyFrame_GetCode(frame);
+            const char* filename = PyUnicode_AsUTF8(code_obj->co_filename);
+            const char* funcname = PyUnicode_AsUTF8(code_obj->co_name);
+#endif
             std::stringstream ss;
             ss << "    " << filename << "(" << line << "): " << funcname;
             python_frames_.push_back(ss.str());
+#if PY_VERSION_HEX < 0X030C0000
             frame = frame->f_back;
-        }
-    }
-    PyGILState_Release(gstate);
 #else
-// TODO: python+3.12 rename tstate->frame to tstate->cframe
+            frame = PyFrame_GetBack(frame);
 #endif
+        }
+    } else {
+        LOG(WARN) << "PyThreadState_GET failed";
+    }
+
+    PyGILState_Release(gstate);
+//#else
+// TODO: python+3.12 rename tstate->frame to tstate->cframe
+//#endif
     return !python_frames_.empty();
 }
 
 std::ostream& operator<<(std::ostream& os, const CallFrames& frames) {
-    for (const auto& f : frames.python_frames_) {
+    for (const auto& f : frames.native_frames_) {
         os << f << "\n";
     }
-    for (const auto& f : frames.native_frames_) {
+    for (const auto& f : frames.python_frames_) {
         os << f << "\n";
     }
     return os;

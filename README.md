@@ -83,6 +83,6 @@
 
 | 环境变量 | 用法示例 | 可选值 | 默认值 | 说明 |
 | ------ | ------- | ----- | ----- | ---- |
-| LOG_LEVEL | `export LOG_LEVEL=WARN,TRACE=INFO` | 日志级别有:INFO,WARN,ERROR,FATAL, 日志模块有: PROFILE,TRACE,HOOK,PYTHON,LAST | 全局日志级别默认为WARN,各个日志模块的默认日志级别为INFO | 日志级别, 日志模块级别 |
-| HOOK_ENABLE_TRACE | `export HOOK_ENABLE_TRACE='xpuMemcpy=1,xpuSetDevice=0'`  | xpuMalloc,xpuFree,xpuWait,xpuMemcpy,xpuSetDevice,xpuCurrentDeviceId | 默认所有接口的的值均为0,即所有接口默认关闭backtrace | 是否开启backtrace |
+| LOG_LEVEL | `export LOG_LEVEL=WARN,TRACE=INFO` | 日志级别有:INFO,WARN,ERROR,FATAL, 日志模块有: PROFILE,TRACE,HOOK,PYTHON | 全局日志级别默认为WARN,各个日志模块的默认日志级别为INFO | 日志级别, 日志模块级别 |
+| HOOK_ENABLE_TRACE | `export HOOK_ENABLE_TRACE='xpu_memcpy=1,xpu_set_device=0'`  | xpu_malloc,xpu_free,xpu_wait,xpu_memcpy,xpu_set_device,xpu_current_device | 默认所有接口的的值均为0,即所有接口默认关闭backtrace | 是否开启backtrace |
 | LOG_OUTPUT_PATH |  `export LOG_OUTPUT_PATH='/tmp/'` |  日志输出文件夹 | - | 是否将日志重定向到文件 |

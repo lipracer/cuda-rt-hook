@@ -14,6 +14,7 @@
 #include "logger/logger.h"
 #include "logger/StringRef.h"
 #include "xpu_mock.h"
+#include "backtrace.h"
 
 // namespace nb = nanobind;
 // using namespace nb::literals;
@@ -52,7 +53,13 @@ std::vector<adt::StringRef> convert_arg_list_of_str(const char ** list_of_str){
 
 extern "C" {
 
-HOOK_API int add(int lhs, int rhs) { return lhs + rhs; }
+HOOK_API int backtrace_add_test(int lhs, int rhs) {
+    trace::CallFrames frames;
+    frames.CollectNative();
+    frames.CollectPython();
+    LOG(WARN) << "test frame:\n" << frames;
+    return lhs + rhs;
+}
 
 HOOK_API void initialize() { dh_initialize(); }
 

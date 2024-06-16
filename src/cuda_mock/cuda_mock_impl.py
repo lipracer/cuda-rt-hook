@@ -10,8 +10,8 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 cuda_mock_impl = ctypes.CDLL(f'{script_dir}/libcuda_mock_impl.so')
 cuda_mock_impl.print_hook_initialize.argtypes = [ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_char_p)]
 
-def add(lhs, rhs):
-    return lhs + rhs
+def backtrace_add_test(lhs, rhs):
+    return cuda_mock_impl.backtrace_add_test(lhs, rhs)
 
 def initialize():
     return cuda_mock_impl.initialize()
@@ -36,7 +36,7 @@ def print_hook_initialize(target_libs, target_symbols):
     target_libs = convert_arg_list_of_str(target_libs)
     target_symbols = convert_arg_list_of_str(target_symbols)
     cuda_mock_impl.print_hook_initialize(target_libs, target_symbols)
-    
+
 
 def patch_runtime():
     return cuda_mock_impl.patch_runtime()
