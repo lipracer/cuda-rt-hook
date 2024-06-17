@@ -100,9 +100,10 @@ bool CallFrames::CollectPython() {
     }
 
     PyGILState_Release(gstate);
-//#else
-// TODO: python+3.12 rename tstate->frame to tstate->cframe
-//#endif
+    if (python_frames_.empty()) {
+        python_frames_.push_back("[empty stack]");
+    }
+
     return !python_frames_.empty();
 }
 

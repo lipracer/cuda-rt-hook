@@ -1,6 +1,7 @@
 #include "logger/logger.h"
 
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -8,6 +9,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstdlib>
 #include <ctime>
 #include <deque>
 #include <exception>
@@ -19,9 +21,8 @@
 #include <unordered_set>
 #include <vector>
 
-#include "env_util.h"
 #include "env_mgr.h"
-
+#include "env_util.h"
 
 static std::vector<std::string>& gLoggerLevelStringSet() {
     static std::vector<std::string> instance = {"INFO", "WARN", "ERROR",
@@ -228,6 +229,18 @@ class LogStreamCollection {
     std::shared_ptr<LogConsumer> consumer_;
 };
 
+static bool checkPathNotExistCreateIt(const std::string& path) {
+    if (access(path.c_str(), F_OK) == -1) {
+        fprintf(stderr, "%s not exist try create it!\n", path.c_str());
+        std::string cmd = ("mkdir -p ");
+        cmd += path;
+        if (std::system(cmd.c_str())) {
+            return false;
+        }
+    }
+    return true;
+}
+
 class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
    public:
     LogConsumer(const std::shared_ptr<LogConfig>& cfg)
@@ -240,11 +253,16 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
         tmpBuffer_.resize(256);
         auto path = hook::get_env_value<std::string>(env_mgr::LOG_OUTPUT_PATH);
         if (!path.empty()) {
-            path = getFileName(path);
-            cfg_->stream = fopen(path.c_str(), "wt+");
-            if (!cfg_->stream) {
-                fprintf(stderr, "can't open file:%s\n", path.c_str());
-                cfg_->stream = stdout;
+            if (!checkPathNotExistCreateIt(path)) {
+                fprintf(stderr, "%s not exist and try create fail!\n",
+                        path.c_str());
+            } else {
+                path = getFileName(path);
+                cfg_->stream = fopen(path.c_str(), "wt+");
+                if (!cfg_->stream) {
+                    fprintf(stderr, "can't open file:%s\n", path.c_str());
+                    cfg_->stream = stdout;
+                }
             }
         }
         if (cfg->mode == LogConfig::kAsync) {
@@ -336,6 +354,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
             if (th_ && th_->joinable()) th_->join();
         }
         flush_queue();
+        fwriteString("[LOG END]", cfg_->stream);
         fflush(cfg_->stream);
     }
 

@@ -57,10 +57,6 @@ int config_hw(void* s, int ng, int nb) {
     return 0;
 }
 
-static const int gLogDummp =
-    (logger::initLogger(logger::LogConfig{.mode = logger::LogConfig::kSync}),
-     0);
-
 TEST(SupportTest, functor_malloc) {
     void* ptr = nullptr;
     rt_malloc(&ptr, 100);
