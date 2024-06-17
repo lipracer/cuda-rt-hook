@@ -11,7 +11,7 @@
 #include "env_mgr.h"
 
 static bool enable_log_backtrace(const char* func) {
-    auto ctrl = hook::get_env_value<std::vector<std::pair<std::string, int>>>(
+    static auto ctrl = hook::get_env_value<std::vector<std::pair<std::string, int>>>(
         env_mgr::HOOK_ENABLE_TRACE);
     auto iter = std::find_if(ctrl.begin(), ctrl.end(),
                              [&](auto& pair) { return pair.first == func; });
@@ -27,7 +27,7 @@ static bool enable_log_backtrace(const char* func) {
             trace::CallFrames callFrames;                                    \
             callFrames.CollectNative();                                      \
             callFrames.CollectPython();                                      \
-            MLOG(TRACE, INFO) << __func__ << " with frame:\n" << callFrames; \
+            MLOG(TRACE, WARN) << func << " with frame:\n" << callFrames;     \
         }                                                                    \
     } while (0)
 
