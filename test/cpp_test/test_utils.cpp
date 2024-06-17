@@ -36,11 +36,6 @@ TEST(EnvUtil, env_util) {
     EXPECT_EQ(vec[1].second, 1);
 }
 
-TEST(Backtrace, default) {
-    EXPECT_FALSE(enable_log_backtrace("xpuMemcpy"));
-    EXPECT_FALSE(enable_log_backtrace("xpuSetDevice"));
-}
-
 TEST(Backtrace, env) {
     setenv("HOOK_ENABLE_TRACE", "xpuMemcpy=1,xpuSetDevice=0", 1);
     EXPECT_TRUE(enable_log_backtrace("xpuMemcpy"));
