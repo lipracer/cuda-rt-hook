@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <sys/stat.h>
 
 #include "env_util.h"
 #include "env_mgr.h"
@@ -240,6 +241,12 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
         tmpBuffer_.resize(256);
         auto path = hook::get_env_value<std::string>(env_mgr::LOG_OUTPUT_PATH);
         if (!path.empty()) {
+            if (access(path.c_str(), F_OK) == -1) {
+                if (mkdir(path.c_str(), 0755) == -1) {
+                    fprintf(stderr, "Failed to create directory: %s\n", path.c_str());
+                    return;
+                }
+            }
             path = getFileName(path);
             cfg_->stream = fopen(path.c_str(), "wt+");
             if (!cfg_->stream) {
