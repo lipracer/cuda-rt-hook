@@ -191,11 +191,7 @@ int cudaGetDevice(int* device) {
 
 int xpu_launch_async(void* func) {
     IF_ENABLE_LOG_TRACE(__func__);
-    auto name_address = reinterpret_cast<char*>(func) + 0x28;
-    char buf[256];
-    mempcpy(buf, name_address, sizeof(buf));
-    buf[sizeof(buf) - 1] = '\0';
-    MLOG(PROFILE, INFO) << buf;
+    // TODO: get symbol name from symbol table
     return origin_xpu_launch_async(func);
 }
 
