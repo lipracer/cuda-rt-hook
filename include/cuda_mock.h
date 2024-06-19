@@ -42,6 +42,10 @@ void dh_create_py_hook_installer(
     const std::function<bool(HookString_t name)>& isTarget,
     const std::function<bool(HookString_t name)>& isSymbol, HookString_t lib,
     const std::function<HookString_t(HookString_t name)>& newSymbol);
+
+// for runtime check python version build vs runtime
+const char* get_build_python_string_version();
+int get_build_python_int_version();
 }
 
 #endif

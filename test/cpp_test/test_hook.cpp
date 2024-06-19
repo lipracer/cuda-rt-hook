@@ -64,3 +64,24 @@ TEST(TestHookPreDefine, install) {
     gHook = false;
     (void)malloc(16);
 }
+
+TEST(TestHookWrap, detected) {
+    EXPECT_TRUE(DetectedToString<int>::value);
+    EXPECT_TRUE(DetectedToString<int&>::value);
+    EXPECT_TRUE(DetectedToString<int*>::value);
+    EXPECT_TRUE(DetectedToString<void*>::value);
+    EXPECT_TRUE(DetectedToString<void**>::value);
+    EXPECT_FALSE(DetectedToString<std::vector<int>>::value);
+}
+
+void test_func(int n) {}
+decltype(&test_func) origin_test_func;
+
+TEST(TestHookWrap, log) {
+    setenv("HOOK_ENABLE_TRACE", "test_func=1", 1);
+    hook::HookFeature symbols[1] = {
+        hook::HookFeature("test_func", &test_func, &origin_test_func)};
+
+    auto new_func = symbols[0].getNewFunc("test");
+    reinterpret_cast<decltype(&test_func)>(new_func)(123);
+}
