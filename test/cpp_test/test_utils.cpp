@@ -14,32 +14,32 @@
 #include "backtrace.h"
 
 TEST(EnvUtil, env_util) {
-    setenv("xpuWait", "0", 1);
-    int intv = hook::get_env_value<int>("xpuWait");
+    setenv("xpu_wait", "0", 1);
+    int intv = hook::get_env_value<int>("xpu_wait");
     EXPECT_EQ(intv, 0);
 
-    setenv("hook_ctr", "xpuWait=0", 1);
+    setenv("hook_ctr", "xpu_wait=0", 1);
     std::pair<std::string, int> pairv =
         hook::get_env_value<std::pair<std::string, int>>("hook_ctr");
-    EXPECT_EQ(pairv.first, "xpuWait");
+    EXPECT_EQ(pairv.first, "xpu_wait");
     EXPECT_EQ(pairv.second, 0);
 
-    setenv("hook_ctr", "xpuWait=0,xpuSetDiviceId=1", 1);
+    setenv("hook_ctr", "xpu_wait=0,xpu_set_device=1", 1);
     std::vector<std::pair<std::string, int>> vec =
         hook::get_env_value<std::vector<std::pair<std::string, int>>>(
             "hook_ctr");
 
-    EXPECT_EQ(vec[0].first, "xpuWait");
+    EXPECT_EQ(vec[0].first, "xpu_wait");
     EXPECT_EQ(vec[0].second, 0);
 
-    EXPECT_EQ(vec[1].first, "xpuSetDiviceId");
+    EXPECT_EQ(vec[1].first, "xpu_set_device");
     EXPECT_EQ(vec[1].second, 1);
 }
 
 TEST(Backtrace, env) {
-    setenv("HOOK_ENABLE_TRACE", "xpuMemcpy=1,xpuSetDevice=0", 1);
-    EXPECT_TRUE(enable_log_backtrace("xpuMemcpy"));
-    EXPECT_FALSE(enable_log_backtrace("xpuSetDevice"));
+    setenv("HOOK_ENABLE_TRACE", "xpu_memcpy=1,xpu_set_device=0", 1);
+    EXPECT_TRUE(enable_log_backtrace("xpu_memcpy"));
+    EXPECT_FALSE(enable_log_backtrace("xpu_set_device"));
 }
 
 TEST(StringRef, member) {

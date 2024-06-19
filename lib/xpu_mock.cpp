@@ -14,188 +14,152 @@
 
 #include "backtrace.h"
 #include "hook.h"
-#include "logger/StringRef.h"
+#include "hooks/print_hook.h"
 #include "logger/StringRef.h"
 #include "logger/logger.h"
 #include "statistic.h"
 #include "support.h"
-#include "hooks/print_hook.h"
 
 namespace {
 
-class XpuRuntimeApiHook;
+//-------------------------- xpu api --------------------------//
 
-static constexpr int kMaxXpuDeviceNum = 8;
+typedef int (*xpu_malloc_t)(void** pdevptr, uint64_t size, int kind);
+typedef int (*xpu_free_t)(void* devptr);
+typedef int (*xpu_wait_t)(void* stream);
+typedef int (*xpu_memcpy_t)(void* dst, const void* src, uint64_t size,
+                            int kind);
+typedef int (*xpu_set_device_t)(int devid);
+typedef int (*xpu_current_device_t)(int* devid);
+typedef int (*xpu_launch_async_t)(void*);
+typedef int (*xpu_stream_create_t)(void** pstream);
+typedef int (*xpu_stream_destroy_t)(void* stream);
 
-class XpuRuntimeWrapApi {
-   public:
-    static XpuRuntimeWrapApi& instance();
-    XpuRuntimeWrapApi();
-    static int xpuMalloc(void** pDevPtr, uint64_t size, int kind);
-    static int xpuFree(void* devPtr);
-    static int xpuWait(void* devStream);
-    static int xpuMemcpy(void* dst, const void* src, uint64_t size, int kind);
-    static int xpuSetDevice(int devId);
-    static int xpuCurrentDeviceId(int* devIdPtr);
+xpu_malloc_t origin_xpu_malloc = nullptr;
+xpu_free_t origin_xpu_free = nullptr;
+xpu_wait_t origin_xpu_wait = nullptr;
+xpu_memcpy_t origin_xpu_memcpy = nullptr;
+xpu_set_device_t origin_xpu_set_device = nullptr;
+xpu_current_device_t origin_xpu_current_device = nullptr;
+xpu_launch_async_t origin_xpu_launch_async = nullptr;
+xpu_stream_create_t origin_xpu_stream_create = nullptr;
+xpu_stream_destroy_t origin_xpu_stream_destroy = nullptr;
 
-   private:
-    decltype(&xpuMalloc) raw_xpu_malloc_{nullptr};
-    decltype(&xpuFree) raw_xpu_free_{nullptr};
-    decltype(&xpuWait) raw_xpu_wait_{nullptr};
-    decltype(&xpuMemcpy) raw_xpu_memcpy_{nullptr};
-    decltype(&xpuSetDevice) raw_xpu_set_device_id_{nullptr};
-    decltype(&xpuCurrentDeviceId) raw_xpu_current_device_{nullptr};
-
-    friend class XpuRuntimeApiHook;
-};
-
-XpuRuntimeWrapApi& XpuRuntimeWrapApi::instance() {
-    static XpuRuntimeWrapApi instance;
-    return instance;
-}
-
-XpuRuntimeWrapApi::XpuRuntimeWrapApi() {}
-
-int XpuRuntimeWrapApi::xpuMalloc(void** pDevPtr, uint64_t size, int kind) {
-    IF_ENABLE_LOG_TRACE(__func__);
+int xpu_malloc(void** pdevptr, uint64_t size, int kind) {
     int r = 0;
     int devId = 0;
 
-    CHECK(XpuRuntimeWrapApi::instance().raw_xpu_current_device_,
-          "xpu_current_device not binded");
-    CHECK(XpuRuntimeWrapApi::instance().raw_xpu_malloc_, "xpu_free not binded");
+    CHECK(origin_xpu_current_device, "xpu_current_device not binded");
+    CHECK(origin_xpu_malloc, "xpu_malloc not binded");
 
-    r = XpuRuntimeWrapApi::instance().raw_xpu_current_device_(&devId);
+    r = origin_xpu_current_device(&devId);
     if (r != 0) {
         return r;
     }
-    CHECK_LT(devId, kMaxXpuDeviceNum,
-             "devId({}) must less than kMaxXpuDeviceNum({})", devId,
-             kMaxXpuDeviceNum);
 
-    r = XpuRuntimeWrapApi::instance().raw_xpu_malloc_(pDevPtr, size, kind);
+    r = origin_xpu_malloc(pdevptr, size, kind);
     if (r != 0) {
-        LOG(WARN) << "[XpuRuntimeWrapApi xpuMalloc][failed] "
-                  << "devId=" << devId << ","
+        LOG(WARN) << "[XPU_MOCK] xpu malloc failed "
+                  << "devid=" << devId << ","
                   << "size=" << size << ","
                   << "kind=" << kind;
-        return r;
-    }
-
-    hook::MemoryStatisticCollection::instance().record_alloc(
-        hook::HookRuntimeContext::instance().curLibName(), devId, *pDevPtr,
-        size, kind);
-
-    return r;
-}
-
-int XpuRuntimeWrapApi::xpuFree(void* devPtr) {
-    IF_ENABLE_LOG_TRACE(__func__);
-    int r = 0;
-    int devId = 0;
-
-    CHECK(XpuRuntimeWrapApi::instance().raw_xpu_current_device_,
-          "xpu_current_device not binded");
-    CHECK(XpuRuntimeWrapApi::instance().raw_xpu_free_, "xpu_free not binded");
-
-    r = XpuRuntimeWrapApi::instance().raw_xpu_current_device_(&devId);
-    if (r != 0) {
-        return r;
-    }
-    CHECK_LT(devId, kMaxXpuDeviceNum,
-             "devId({}) must less than kMaxXpuDeviceNum({})", devId,
-             kMaxXpuDeviceNum);
-
-    r = XpuRuntimeWrapApi::instance().raw_xpu_free_(devPtr);
-
-    hook::MemoryStatisticCollection::instance().record_free(
-        hook::HookRuntimeContext::instance().curLibName(), devId, devPtr);
-
-    if (r != 0) {
         LOG(WARN) << "malloc device memory failed!\n"
                   << hook::MemoryStatisticCollection::instance();
         return r;
     }
 
+    hook::MemoryStatisticCollection::instance().record_alloc(
+        hook::HookRuntimeContext::instance().curLibName(), devId, *pdevptr,
+        size, kind);
+
     return r;
 }
 
-int XpuRuntimeWrapApi::xpuWait(void* devStream) {
-    IF_ENABLE_LOG_TRACE(__func__);
-    return XpuRuntimeWrapApi::instance().raw_xpu_wait_(devStream);
+int xpu_free(void* devptr) {
+    int r = 0;
+    int devId = 0;
+
+    CHECK(origin_xpu_current_device, "xpu_current_device not binded");
+    CHECK(origin_xpu_free, "xpu_free not binded");
+
+    r = origin_xpu_current_device(&devId);
+    if (r != 0) {
+        return r;
+    }
+
+    r = origin_xpu_free(devptr);
+
+    hook::MemoryStatisticCollection::instance().record_free(
+        hook::HookRuntimeContext::instance().curLibName(), devId, devptr);
+
+    return r;
 }
 
-int XpuRuntimeWrapApi::xpuMemcpy(void* dst, const void* src, uint64_t size,
-                                 int kind) {
-    IF_ENABLE_LOG_TRACE(__func__);
-    return XpuRuntimeWrapApi::instance().raw_xpu_memcpy_(dst, src, size, kind);
+int xpu_wait(void* stream) { return origin_xpu_wait(stream); }
+
+int xpu_memcpy(void* dst, const void* src, uint64_t size, int kind) {
+    return origin_xpu_memcpy(dst, src, size, kind);
 }
 
-int XpuRuntimeWrapApi::xpuSetDevice(int devId) {
-    IF_ENABLE_LOG_TRACE(__func__);
-    MLOG(PROFILE, INFO) << "[XpuRuntimeWrapApi xpuCurrentDeviceId] "
-                        << "devId=" << devId;
-    return XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_(devId);
+int xpu_set_device(int devid) {
+    MLOG(PROFILE, INFO) << "[XPU_MOCK] xpu_set_device "
+                        << "devid=" << devid;
+    return origin_xpu_set_device(devid);
 }
 
-int XpuRuntimeWrapApi::xpuCurrentDeviceId(int* devIdPtr) {
-    IF_ENABLE_LOG_TRACE(__func__);
-    int ret = XpuRuntimeWrapApi::instance().raw_xpu_current_device_(devIdPtr);
-    MLOG(PROFILE, INFO) << "[XpuRuntimeWrapApi xpuCurrentDeviceId] "
-                        << "devId=" << *devIdPtr;
+int xpu_current_device(int* devid) {
+    int ret = origin_xpu_current_device(devid);
+    MLOG(PROFILE, INFO) << "[XPU_MOCK] xpu_current_device "
+                        << "devid=" << *devid;
     return ret;
 }
 
-//-------------------------- cuda api --------------------------//
+int xpu_launch_async(void* func) {
+    // TODO: get symbol name from symbol table
+    return origin_xpu_launch_async(func);
+}
 
-namespace {
+int xpu_stream_create(void** pstream) {
+    return origin_xpu_stream_create(pstream);
+}
+
+int xpu_stream_destroy(void* stream) {
+    return origin_xpu_stream_destroy(stream);
+}
+
+//-------------------------- cuda api --------------------------//
 
 typedef int (*CudaMalloc_t)(void** devPtr, size_t size);
 typedef int (*CudaFree_t)(void* devPtr);
 typedef int (*CudaMemcpy_t)(void* dst, const void* src, size_t count, int kind);
 typedef int (*CudaSetDevice_t)(int);
 typedef int (*CudaGetDevice_t)(int*);
-typedef int (*xpu_launch_async_t)(void*);
 
 CudaMalloc_t origin_cudaMalloc = nullptr;
 CudaFree_t origin_cudaFree = nullptr;
 CudaMemcpy_t origin_cudaMemcpy = nullptr;
 CudaSetDevice_t origin_cudaSetDevice = nullptr;
 CudaGetDevice_t origin_cudaGetDevice = nullptr;
-xpu_launch_async_t origin_xpu_launch_async = nullptr;
 
 int cudaMalloc(void** devPtr, size_t size) {
-    IF_ENABLE_LOG_TRACE(__func__);
     return origin_cudaMalloc(devPtr, size);
 }
 
 int cudaFree(void* devPtr) {
-    IF_ENABLE_LOG_TRACE(__func__);
     return origin_cudaFree(devPtr);
 }
 
 int cudaMemcpy(void* dst, const void* src, size_t count, int kind) {
-    IF_ENABLE_LOG_TRACE(__func__);
     return origin_cudaMemcpy(dst, src, count, kind);
 }
 
 int cudaSetDevice(int device) {
-    IF_ENABLE_LOG_TRACE(__func__);
     return origin_cudaSetDevice(device);
 }
 
 int cudaGetDevice(int* device) {
-    IF_ENABLE_LOG_TRACE(__func__);
     return origin_cudaGetDevice(device);
 }
-
-int xpu_launch_async(void* func) {
-    IF_ENABLE_LOG_TRACE(__func__);
-    // TODO: get symbol name from symbol table
-    return origin_xpu_launch_async(func);
-}
-
-}  // namespace
 
 #define BUILD_FEATURE(name) hook::HookFeature(#name, &name, &origin_##name)
 
@@ -206,35 +170,22 @@ class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
                !adt::StringRef(name).contain("libcudart.so");
     }
 
-    hook::HookFeature symbols[12] = {
-        // malloc
-        hook::HookFeature("xpu_malloc", &XpuRuntimeWrapApi::xpuMalloc,
-                          &XpuRuntimeWrapApi::instance().raw_xpu_malloc_),
-        // free
-        hook::HookFeature("xpu_free", &XpuRuntimeWrapApi::xpuFree,
-                          &XpuRuntimeWrapApi::instance().raw_xpu_free_),
-        // get device id
-        hook::HookFeature(
-            "xpu_current_device",
-            &XpuRuntimeWrapApi::instance().xpuCurrentDeviceId,
-            &XpuRuntimeWrapApi::instance().raw_xpu_current_device_),
-        // sync device
-        hook::HookFeature("xpu_wait", &XpuRuntimeWrapApi::xpuWait,
-                          &XpuRuntimeWrapApi::instance().raw_xpu_wait_),
-        // memcpy
-        hook::HookFeature("xpu_memcpy", &XpuRuntimeWrapApi::xpuMemcpy,
-                          &XpuRuntimeWrapApi::instance().raw_xpu_memcpy_),
-        // set_device
-        hook::HookFeature(
-            "xpu_set_device", &XpuRuntimeWrapApi::xpuSetDevice,
-            &XpuRuntimeWrapApi::instance().raw_xpu_set_device_id_),
+    hook::HookFeature symbols[14] = {
+        BUILD_FEATURE(xpu_malloc),
+        BUILD_FEATURE(xpu_free),
+        BUILD_FEATURE(xpu_current_device),
+        BUILD_FEATURE(xpu_set_device),
+        BUILD_FEATURE(xpu_wait),
+        BUILD_FEATURE(xpu_memcpy),
+        BUILD_FEATURE(xpu_launch_async),
+        BUILD_FEATURE(xpu_stream_create),
+        BUILD_FEATURE(xpu_stream_destroy),
 
         BUILD_FEATURE(cudaMalloc),
         BUILD_FEATURE(cudaFree),
         BUILD_FEATURE(cudaMemcpy),
         BUILD_FEATURE(cudaSetDevice),
         BUILD_FEATURE(cudaGetDevice),
-        BUILD_FEATURE(xpu_launch_async),
     };
 
     void onSuccess() { LOG(WARN) << "install " << curSymName() << " success"; }
@@ -282,8 +233,7 @@ struct PatchRuntimeHook : public hook::HookInstallerWrap<PatchRuntimeHook> {
 
 }  // namespace
 
-
-void __runtimeapi_hook_initialize(){
+void __runtimeapi_hook_initialize() {
     static auto install_wrap = std::make_shared<XpuRuntimeApiHook>();
     install_wrap->install();
 }
