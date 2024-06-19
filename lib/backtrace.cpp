@@ -32,7 +32,7 @@ bool CallFrames::CollectNative() {
     if (symbols == nullptr) {
         return false;
     }
-    python_frames_.push_back("  Native frame:");
+    native_frames_.push_back("  Native frame:");
     Dl_info info;
     auto align_length = std::to_string(num).size();
     for (int j = 0; j < num; j++) {
