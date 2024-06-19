@@ -14,13 +14,14 @@ find_package(PythonLibs REQUIRED)
 add_library(cuda_mock STATIC
     GlobalVarMgr.cpp
     logger.cpp
-    cuda_mock.cpp 
-    hook.cpp 
-    cuda_op_tracer.cpp 
-    backtrace.cpp
-    xpu_mock.cpp
-    statistic.cpp
     env_mgr.cpp
+    backtrace.cpp
+    statistic.cpp
+    hook.cpp
+    cuda_op_tracer.cpp
+    cuda_mock.cpp
+    xpu_mock.cpp
+    triton_mock.cpp
 )
 
 add_library(xpu_mock_improve SHARED hooks/print_hook.cpp)
@@ -41,19 +42,20 @@ include_directories(PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 include_directories(PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/fmt/include)
 
 
-add_library(plthook STATIC
-    GlobalVarMgr.cpp
-    cuda_mock.cpp 
-    hook.cpp 
-    cuda_op_tracer.cpp 
-    backtrace.cpp
-    statistic.cpp
-    env_mgr.cpp
-)
-target_compile_definitions(plthook
-    PRIVATE FMT_HEADER_ONLY
-)
-target_include_directories(plthook PUBLIC ${Python_INCLUDE_DIRS})
-target_link_libraries(plthook PRIVATE ${PYTHON_LIBRARIES})
-target_link_libraries(plthook PRIVATE pthread dl)
+# add_library(plthook STATIC
+#     GlobalVarMgr.cpp
+#     cuda_mock.cpp
+#     hook.cpp
+#     cuda_op_tracer.cpp
+#     backtrace.cpp
+#     statistic.cpp
+#     env_mgr.cpp
+# )
+# 
+# target_compile_definitions(plthook
+#     PRIVATE FMT_HEADER_ONLY
+# )
+# target_include_directories(plthook PUBLIC ${Python_INCLUDE_DIRS})
+# target_link_libraries(plthook PRIVATE ${PYTHON_LIBRARIES})
+# target_link_libraries(plthook PRIVATE pthread dl)
 

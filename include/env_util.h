@@ -105,4 +105,10 @@ get_env_value(const char* str) {
     return str2value<T>()(env_value_str);
 }
 
+template <typename T>
+inline typename std::enable_if<std::is_same<T, const char*>::value, T>::type
+get_env_value(const char* str) {
+    return std::getenv(str);
+}
+
 }  // namespace hook

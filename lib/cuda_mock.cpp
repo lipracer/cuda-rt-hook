@@ -9,6 +9,7 @@
 #include <unordered_set>
 
 #include "GlobalVarMgr.h"
+#include "env_mgr.h"
 #include "backtrace.h"
 #include "cuda_op_tracer.h"
 #include "hook.h"
@@ -273,7 +274,14 @@ void dh_create_py_hook_installer(
 
 void DhLibraryLoader() __attribute__((constructor));
 
-void DhLibraryLoader() { logger::initLogger(); }
+void DhLibraryLoader() {
+    static bool sync = hook::get_env_value<bool>(env_mgr::LOG_SYNC_MODE);
+    logger::LogConfig cfg;
+    if (sync) {
+        cfg.mode = logger::LogConfig::kSync;
+    }
+    logger::initLogger(cfg);
+}
 
 void DhLibraryUnloader() __attribute__((destructor));
 

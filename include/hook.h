@@ -251,6 +251,9 @@ struct DetectedToString<T,
     }
 };
 
+template <int Idx>
+void args_to_string_impl(std::ostream& os) {}
+
 template <int Idx, typename Args>
 void args_to_string_impl(Args args, std::ostream& os) {
     os << "arg" << Idx << ":";
@@ -332,10 +335,12 @@ constexpr void* GetMapedFunc(size_t UniqueId, R (*new_func)(Args...)) {
 struct HookFeature {
     template <size_t N, typename R, typename... Args, typename T>
     constexpr HookFeature(const char (&sym_name)[N], R (*new_func)(Args...),
-                          T** old_func)
+                          T** old_func,
+                          const std::function<bool(void)>& filter = {})
         : symName(sym_name),
           newFunc(reinterpret_cast<void*>(new_func)),
-          oldFunc(reinterpret_cast<void**>(old_func)) {
+          oldFunc(reinterpret_cast<void**>(old_func)),
+          filter_(filter) {
         findUniqueFunc = [=](size_t uniqueId) {
             return GetMapedFunc(uniqueId, new_func);
         };
@@ -359,9 +364,9 @@ struct HookFeature {
     void* newFunc;
     void** oldFunc;
     std::function<void*(size_t)> findUniqueFunc;
+    std::function<bool(void)> filter_;
 };
 
-// TODO(lipracer): mix predefine mode and dynamic mode
 template <typename DerivedT>
 struct MemberDetector<DerivedT,
                       std::void_t<decltype(std::declval<DerivedT>().symbols)>>
@@ -369,6 +374,9 @@ struct MemberDetector<DerivedT,
     static bool targetSym(DerivedT* self, const char* name) {
         for (auto& sym : static_cast<DerivedT*>(self)->symbols) {
             if (!strcmp(name, sym.symName)) {
+                if (sym.filter_ && !sym.filter_()) {
+                    return false;
+                }
                 return true;
             }
         }
