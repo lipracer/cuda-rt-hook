@@ -59,11 +59,7 @@ int xpu_malloc(void** pdevptr, uint64_t size, int kind) {
 
     r = origin_xpu_malloc(pdevptr, size, kind);
     if (r != 0) {
-        LOG(WARN) << "[XPU_MOCK] xpu malloc failed "
-                  << "devid=" << devId << ","
-                  << "size=" << size << ","
-                  << "kind=" << kind;
-        LOG(WARN) << "malloc device memory failed!\n"
+        LOG(WARN) << "xpu malloc device memory failed!\n"
                   << hook::MemoryStatisticCollection::instance();
         return r;
     }
@@ -102,15 +98,11 @@ int xpu_memcpy(void* dst, const void* src, uint64_t size, int kind) {
 }
 
 int xpu_set_device(int devid) {
-    MLOG(PROFILE, INFO) << "[XPU_MOCK] xpu_set_device "
-                        << "devid=" << devid;
     return origin_xpu_set_device(devid);
 }
 
 int xpu_current_device(int* devid) {
     int ret = origin_xpu_current_device(devid);
-    MLOG(PROFILE, INFO) << "[XPU_MOCK] xpu_current_device "
-                        << "devid=" << *devid;
     return ret;
 }
 
