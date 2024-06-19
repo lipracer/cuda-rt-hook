@@ -91,7 +91,9 @@ int xpu_free(void* devptr) {
     return r;
 }
 
-int xpu_wait(void* stream) { return origin_xpu_wait(stream); }
+int xpu_wait(void* stream) {
+    return origin_xpu_wait(stream);
+}
 
 int xpu_memcpy(void* dst, const void* src, uint64_t size, int kind) {
     return origin_xpu_memcpy(dst, src, size, kind);
@@ -102,8 +104,7 @@ int xpu_set_device(int devid) {
 }
 
 int xpu_current_device(int* devid) {
-    int ret = origin_xpu_current_device(devid);
-    return ret;
+    return origin_xpu_current_device(devid);
 }
 
 int xpu_launch_async(void* func) {
