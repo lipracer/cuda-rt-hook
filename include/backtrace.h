@@ -7,28 +7,29 @@
 #include <unordered_map>
 #include <vector>
 
-#include "env_util.h"
 #include "env_mgr.h"
+#include "env_util.h"
 
-static bool enable_log_backtrace(const char* func) {
-    static auto ctrl = hook::get_env_value<std::vector<std::pair<std::string, int>>>(
-        env_mgr::HOOK_ENABLE_TRACE);
+static int enable_log_backtrace(const char* func) {
+    static auto ctrl =
+        hook::get_env_value<std::vector<std::pair<std::string, int>>>(
+            env_mgr::HOOK_ENABLE_TRACE);
     auto iter = std::find_if(ctrl.begin(), ctrl.end(),
                              [&](auto& pair) { return pair.first == func; });
     if (iter != ctrl.end()) {
         return iter->second;
     }
-    return false;
+    return 0;
 }
 
-#define IF_ENABLE_LOG_TRACE(func)                                            \
-    do {                                                                     \
-        if (enable_log_backtrace(func)) {                                    \
-            trace::CallFrames callFrames;                                    \
-            callFrames.CollectNative();                                      \
-            callFrames.CollectPython();                                      \
-            MLOG(TRACE, WARN) << func << " with frame:\n" << callFrames;     \
-        }                                                                    \
+#define IF_ENABLE_LOG_TRACE(func)                                        \
+    do {                                                                 \
+        if (enable_log_backtrace(func)) {                                \
+            trace::CallFrames callFrames;                                \
+            callFrames.CollectNative();                                  \
+            callFrames.CollectPython();                                  \
+            MLOG(TRACE, WARN) << func << " with frame:\n" << callFrames; \
+        }                                                                \
     } while (0)
 
 namespace trace {

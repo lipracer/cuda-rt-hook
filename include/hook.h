@@ -9,12 +9,14 @@
 #include <iosfwd>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <unordered_map>
 #include <vector>
 
 #include "GlobalVarMgr.h"
-#include "logger/logger.h"
 #include "backtrace.h"
+#include "logger/logger.h"
+#include "support.h"
 
 #define HOOK_API __attribute__((__visibility__("default")))
 
@@ -214,12 +216,7 @@ class TimeStatisticWrapIter {
 
     void reset() { sp_ = std::chrono::steady_clock::now(); }
 
-    auto operator->() {
-        IF_ENABLE_LOG_TRACE(
-            HookRuntimeContext::instance().curSymName().c_str());
-        reset();
-        return &*iter_;
-    }
+    auto operator->() { return &*iter_; }
 
    private:
     IterT iter_;
@@ -236,10 +233,65 @@ auto wrapCurrentIter() {
         });
 }
 
+template <typename T, typename = void>
+struct DetectedToString : public std::false_type {
+    static void apply(T t, std::ostream& os) {
+        os << "unknown"
+           << "(" << __support__demangle(typeid(t).name()) << ")";
+    }
+};
+
+template <typename T>
+struct DetectedToString<T,
+                        std::void_t<decltype(operator<<(
+                            std::declval<std::ostream>(), std::declval<T>()))>>
+    : public std::true_type {
+    static void apply(T t, std::ostream& os) {
+        os << t << "(" << __support__demangle(typeid(t).name()) << ")";
+    }
+};
+
+template <int Idx, typename Args>
+void args_to_string_impl(Args args, std::ostream& os) {
+    os << "arg" << Idx << ":";
+    DetectedToString<Args>::apply(args, os);
+}
+
+template <int Idx, typename First, typename... Args>
+typename std::enable_if_t<(sizeof...(Args) > 0), void> args_to_string_impl(
+    First f, Args... args, std::ostream& os) {
+    os << "arg" << Idx << ":";
+    DetectedToString<First>::apply(f, os);
+    os << " ";
+    args_to_string_impl<Idx + 1, Args...>(args..., os);
+}
+
+template <typename... Args>
+std::string args_to_string(Args... args) {
+    std::stringstream ss;
+    args_to_string_impl<0, Args...>(args..., ss);
+    return ss.str();
+}
+
+#define IF_ENABLE_LOG_TRACE_AND_ARGS(func)                                    \
+    do {                                                                      \
+        int ctrl = enable_log_backtrace(func);                                \
+        if (ctrl) {                                                           \
+            if (!(ctrl & 0b10)) MLOG(TRACE, WARN) << args_to_string(args...); \
+            trace::CallFrames callFrames;                                     \
+            callFrames.CollectNative();                                       \
+            callFrames.CollectPython();                                       \
+            MLOG(TRACE, WARN) << func << " with frame:\n" << callFrames;      \
+        }                                                                     \
+    } while (0)
+
 template <size_t UniqueId, typename R, typename... Args>
 struct MapedFunc {
     static R func(Args... args) {
         auto iter = wrapCurrentIter<UniqueId>();
+        IF_ENABLE_LOG_TRACE_AND_ARGS(
+            HookRuntimeContext::instance().curSymName().c_str());
+        iter.reset();
         return reinterpret_cast<R (*)(Args...)>(iter->second.second)(args...);
     }
 };
@@ -248,6 +300,9 @@ template <size_t UniqueId, typename... Args>
 struct MapedFunc<UniqueId, void, Args...> {
     static void func(Args... args) {
         auto iter = wrapCurrentIter<UniqueId>();
+        IF_ENABLE_LOG_TRACE_AND_ARGS(
+            HookRuntimeContext::instance().curSymName().c_str());
+        iter.reset();
         reinterpret_cast<void (*)(Args...)>(iter->second.second)(args...);
     }
 };

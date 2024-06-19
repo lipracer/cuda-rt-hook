@@ -37,6 +37,8 @@ def print_hook_initialize(target_libs, target_symbols):
     target_symbols = convert_arg_list_of_str(target_symbols)
     cuda_mock_impl.print_hook_initialize(target_libs, target_symbols)
 
+def get_build_version_int():
+    return cuda_mock_impl.py_build_version_int()
 
 def patch_runtime():
     return cuda_mock_impl.patch_runtime()

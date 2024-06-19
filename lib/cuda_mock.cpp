@@ -3,6 +3,7 @@
 #include <dlfcn.h>
 #include <regex.h>
 #include <string.h>
+#include <Python.h>
 
 #include <csetjmp>
 #include <unordered_set>
@@ -277,6 +278,10 @@ void DhLibraryLoader() { logger::initLogger(); }
 void DhLibraryUnloader() __attribute__((destructor));
 
 void DhLibraryUnloader() { logger::destroy_logger(); }
+
+const char* get_build_python_string_version() { return PY_VERSION; }
+
+int get_build_python_int_version() { return PY_VERSION_HEX; }
 }
 
 #endif

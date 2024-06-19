@@ -9,12 +9,12 @@
 #include <iostream>
 #include <memory>
 
+#include "backtrace.h"
 #include "cuda_mock.h"
 #include "hook.h"
-#include "logger/logger.h"
 #include "logger/StringRef.h"
+#include "logger/logger.h"
 #include "xpu_mock.h"
-#include "backtrace.h"
 
 // namespace nb = nanobind;
 // using namespace nb::literals;
@@ -38,15 +38,16 @@
 //     m.def("xpu_initialize", []() { xpu_dh_initialize(); });
 // }
 
-std::vector<adt::StringRef> convert_arg_list_of_str(const char ** list_of_str){
+std::vector<adt::StringRef> convert_arg_list_of_str(const char** list_of_str) {
     std::vector<adt::StringRef> result;
     if (list_of_str == nullptr) {
         MLOG(PYTHON, ERROR) << "impossible convert_arg_list_of_str";
         return result;
     }
-    for(const char** str = list_of_str; *str != nullptr; ++str){
+    for (const char** str = list_of_str; *str != nullptr; ++str) {
         result.emplace_back(adt::StringRef(*str));
-        MLOG(PYTHON, INFO) << "convert_arg_list_of_str convert " << result.back() << "to cpp object";
+        MLOG(PYTHON, INFO) << "convert_arg_list_of_str convert "
+                           << result.back() << "to cpp object";
     }
     return result;
 }
@@ -82,24 +83,24 @@ HOOK_API void internal_install_hook_regex(HookString_t srcLib,
                                    hookerSymbolName);
 }
 
-HOOK_API void xpu_initialize() { // hooker = "profile"
+HOOK_API void xpu_initialize() {  // hooker = "profile"
     __runtimeapi_hook_initialize();
 }
-
 
 /*
     for print_hook
 */
 
-HOOK_API void print_hook_initialize(const char ** target_libs, const char** target_symbols){
-    std::vector<adt::StringRef> cpp_target_libs  = convert_arg_list_of_str(target_libs);
-    std::vector<adt::StringRef> cpp_target_symbols  = convert_arg_list_of_str(target_symbols);
+HOOK_API void print_hook_initialize(const char** target_libs,
+                                    const char** target_symbols) {
+    std::vector<adt::StringRef> cpp_target_libs =
+        convert_arg_list_of_str(target_libs);
+    std::vector<adt::StringRef> cpp_target_symbols =
+        convert_arg_list_of_str(target_symbols);
     __print_hook_initialize(cpp_target_libs, cpp_target_symbols);
 }
 
-HOOK_API void print_hook_start_capture() {
-    __print_hook_start_capture();
-}
+HOOK_API void print_hook_start_capture() { __print_hook_start_capture(); }
 
 HOOK_API void print_hook_end_capture(PyObject* py_instance) {
     auto cpp_string = __print_hook_end_capture();
@@ -123,10 +124,7 @@ HOOK_API void print_hook_end_capture(PyObject* py_instance) {
     return;
 }
 
-
 HOOK_API void patch_runtime() { dh_patch_runtime(); }
-
-#define CHECK_PYTHON_OBG()
 
 HOOK_API bool call_python_method_bool(PyObject* py_instance, HookString_t name,
                                       HookString_t value) {
@@ -201,6 +199,11 @@ HOOK_API void create_hook_installer(PyObject* py_instance, HookString_t lib) {
 HOOK_API void py_log_info(HookString_t str) { MLOG(PYTHON, INFO) << str; }
 HOOK_API void py_log_warn(HookString_t str) { MLOG(PYTHON, WARN) << str; }
 HOOK_API void py_log_error(HookString_t str) { MLOG(PYTHON, ERROR) << str; }
+
+HOOK_API HookString_t py_build_version_str() {
+    return get_build_python_string_version();
+}
+HOOK_API int py_build_version_int() { return get_build_python_int_version(); }
 }
 // namespace py = pybind11;
 
