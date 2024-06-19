@@ -32,6 +32,7 @@ bool CallFrames::CollectNative() {
     if (symbols == nullptr) {
         return false;
     }
+    python_frames_.push_back("  Native frame:");
     Dl_info info;
     auto align_length = std::to_string(num).size();
     for (int j = 0; j < num; j++) {
@@ -65,6 +66,7 @@ bool CallFrames::CollectPython() {
     // https://stackoverflow.com/questions/1796510/accessing-a-python-traceback-from-the-c-api
     PyThreadState* tstate = PyThreadState_GET();
     if (tstate) {
+        python_frames_.push_back("  Python frame:");
 #if PY_VERSION_HEX < 0X030C0000
         PyFrameObject* frame = tstate->frame;
 #else
