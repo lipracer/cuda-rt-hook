@@ -42,8 +42,10 @@ void HookRuntimeContext::dump() {
 
 std::ostream& operator<<(std::ostream& os,
                          const HookRuntimeContext::Statistic& s) {
+    // TODO: use printf style logging
     os << "total call:" << s.counter_ << alignWith(s.counter_, 5) << " times"
-       << " total cost:" << s.cost_ << "ms";
+       << " total cost:" << std::fixed << std::setprecision(2) << s.cost_ << "s"
+       << std::setprecision(6) << std::resetiosflags(std::ios::fixed);
     return os;
 }
 

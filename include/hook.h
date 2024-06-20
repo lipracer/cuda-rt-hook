@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <iomanip>
 #include <iosfwd>
 #include <map>
 #include <memory>
@@ -94,7 +95,12 @@ class HookRuntimeContext {
 
     struct Statistic {
         void increase() const { ++counter_; }
-        void increase_cost(size_t time) { cost_ += time; }
+        void increase_cost(double time) { 
+            double expected = cost_.load(), desired = expected + time;
+            do {
+                desired = expected + time;
+            } while (!cost_.compare_exchange_weak(expected, desired));
+        }
         Statistic() = default;
         Statistic(const Statistic& other) { counter_.store(other.counter_); }
         Statistic(Statistic&& other) { counter_.store(other.counter_); }
@@ -111,7 +117,7 @@ class HookRuntimeContext {
 
        private:
         mutable std::atomic<size_t> counter_{0};
-        mutable std::atomic<size_t> cost_{0};
+        mutable std::atomic<double> cost_{0};
     };
 
     struct StatisticPair : public std::pair<void*, void*>, public Statistic {
@@ -188,7 +194,7 @@ constexpr size_t hash(const char (&str)[N]) {
 template <typename IterT>
 class TimeStatisticWrapIter {
    public:
-    using Deleter = std::function<void(std::chrono::milliseconds)>;
+    using Deleter = std::function<void(std::chrono::duration<double>)>;
 
     TimeStatisticWrapIter(IterT iter, Deleter deleter = {})
         : iter_(iter), deleter_(deleter) {
@@ -209,7 +215,7 @@ class TimeStatisticWrapIter {
     }
 
     ~TimeStatisticWrapIter() {
-        auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(
+        auto dur = std::chrono::duration_cast<std::chrono::duration<double>>(
             std::chrono::steady_clock::now() - sp_);
         deleter_(dur);
     }
@@ -228,8 +234,13 @@ template <size_t UniqueId>
 auto wrapCurrentIter() {
     auto iter = HookRuntimeContext::instance().setCurrentState(UniqueId);
     return TimeStatisticWrapIter<HookRuntimeContext::vec_type::iterator>(
-        iter, [=](std::chrono::milliseconds dur) {
+        iter, [=](std::chrono::duration<double> dur) {
             iter->second.increase_cost(dur.count());
+            // TODO: use printf style logging
+            MLOG(PROFILE, INFO) << iter->first.sym_name << " costs "
+                                << std::fixed << std::setprecision(4)
+                                << dur.count() / 1e9 << "ns"
+                                << std::setprecision(6) << std::resetiosflags(std::ios::fixed);
         });
 }
 
