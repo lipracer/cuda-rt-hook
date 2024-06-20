@@ -1,6 +1,6 @@
-add_library(logger STATIC 
-    logger.cpp
-)
+# add_library(logger STATIC 
+#     logger.cpp
+# )
 
 # Although we used memory pool, it doesn't seem to have a significant advantage over stl.
 # Perhaps we need to implement multi-level pooling, 
