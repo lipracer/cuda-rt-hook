@@ -204,6 +204,8 @@ HOOK_API HookString_t py_build_version_str() {
     return get_build_python_string_version();
 }
 HOOK_API int py_build_version_int() { return get_build_python_int_version(); }
+
+HOOK_API void triton_mock() { install_triton_hook(); }
 }
 // namespace py = pybind11;
 

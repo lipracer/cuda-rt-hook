@@ -63,7 +63,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest EXCLUDE_FROM
 
 file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/**/*.cpp")
 add_executable(UnitTest ${TEST_SOURCES})
-target_link_libraries(UnitTest gtest gtest_main logger plthook)
+target_link_libraries(UnitTest gtest gtest_main cuda_mock dl)
 add_test(NAME UnitTest COMMAND UnitTest)
 
 target_include_directories(UnitTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/googletest/include)

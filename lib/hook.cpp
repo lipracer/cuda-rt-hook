@@ -227,16 +227,16 @@ unknown_perms:
 }
 
 static bool isTargetLibFromEnv(const char* libName) {
-    static std::string pattern =
-        hook::get_env_value<std::string>(env_mgr::TARGET_LIB_FILTER);
-    if (pattern.empty()) {
+    static const char* pattern =
+        hook::get_env_value<const char*>(env_mgr::TARGET_LIB_FILTER);
+    if (!pattern) {
         return true;
     }
     static regex_t regex;
-    static int comp_result = regcomp(&regex, pattern.c_str(), 0);
+    static int comp_result = regcomp(&regex, pattern, 0);
     if (comp_result) {
         LOG(WARN) << "ilegal regex pattern:" << pattern;
-        return true;
+        return false;
     }
     int reti = regexec(&regex, libName, 0, nullptr, 0);
     if (reti == REG_NOMATCH) {

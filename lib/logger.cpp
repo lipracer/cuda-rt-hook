@@ -354,7 +354,7 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
             if (th_ && th_->joinable()) th_->join();
         }
         flush_queue();
-        fwriteString("[LOG END]", cfg_->stream);
+        fwriteString("[LOG END]\n", cfg_->stream);
         fflush(cfg_->stream);
     }
 
