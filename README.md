@@ -14,6 +14,7 @@ pip install cuda_mock
 ### 从源码构建
 ```bash
 git clone --recursive https://github.com/lipracer/cuda-rt-hook
+cd cuda-rt-hook
 
 python setup.py sdist bdist_wheel
 pip install dist/*.whl
