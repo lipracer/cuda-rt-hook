@@ -188,7 +188,7 @@ constexpr size_t hash(const char (&str)[N]) {
 template <typename IterT>
 class TimeStatisticWrapIter {
    public:
-    using Deleter = std::function<void(std::chrono::milliseconds)>;
+    using Deleter = std::function<void(std::chrono::nanoseconds)>;
 
     TimeStatisticWrapIter(IterT iter, Deleter deleter = {})
         : iter_(iter), deleter_(deleter) {
@@ -209,7 +209,7 @@ class TimeStatisticWrapIter {
     }
 
     ~TimeStatisticWrapIter() {
-        auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(
+        auto dur = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - sp_);
         deleter_(dur);
     }
@@ -228,8 +228,10 @@ template <size_t UniqueId>
 auto wrapCurrentIter() {
     auto iter = HookRuntimeContext::instance().setCurrentState(UniqueId);
     return TimeStatisticWrapIter<HookRuntimeContext::vec_type::iterator>(
-        iter, [=](std::chrono::milliseconds dur) {
+        iter, [=](std::chrono::nanoseconds dur) {
             iter->second.increase_cost(dur.count());
+            MLOG(PROFILE, INFO) << iter->first.sym_name << " costs "
+                                << dur.count() << "ns";
         });
 }
 
