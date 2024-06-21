@@ -1,5 +1,7 @@
 # cuda-rt-hook(cuda_mock)
 
+[![PyPI Version](https://img.shields.io/pypi/v/cuda_mock.svg)](https://pypi.python.org/pypi/cuda_mock)
+
 cuda-rt-hook（cuda_mock）是一个用于拦截CUDA/XPU Runtime接口(例如，`cudaMalloc`和`xpu_malloc`)调用的Python库，通过修改PLT(Procedure Linkage Table)来实现动态拦截，无需重新编译PyTorch、Paddle等复杂框架，安装后即可使用，在调用堆栈追踪、调用耗时统计以及Paddle/PyTorch训练和推理的精度调试和性能优化等场景下非常有用。
 
 本项目的灵感来自于[plthook](https://github.com/kubo/plthook)项目，项目的初衷是通过拦截CUDA的Runtime调用转为调用mock函数，可以在没有CUDA和GPU环境的情况下运行和调试[triton](https://github.com/triton-lang/triton)等项目，因而项目取名cuda_mock。后续增加了多个功能，使得cuda_mock项目可以用于模型的调试和性能分析。
@@ -49,6 +51,7 @@ LOG_LEVEL=WARN python run.py
 ```
 
 在程序运行结束之后会显示:
+
 ![runtime_api_counts](docs/imgs/example/runtime_api_counts.jpg)
 
 
@@ -59,6 +62,7 @@ HOOK_ENABLE_TRACE="xpu_wait=1" python run.py
 ```
 
 在程序运行结束之后会显示:
+
 ![backtrace](docs/imgs/example/backtrace.jpg)
 
 ### 功能3: 统计模型训练/推理过程中的峰值内存
@@ -68,6 +72,7 @@ LOG_LEVEL=WARN python run.py
 ```
 
 在程序运行结束之后会显示:
+
 ![memory_peaks](docs/imgs/example/memory_peaks.jpg)
 
 ### 功能4: 打印Runtime接口的耗时
@@ -77,9 +82,21 @@ LOG_SYNC_MODE=1 LOG_LEVEL=PROFILE=INFO python run.py
 ```
 
 在程序运行过程中会显示:
-![time_statistic](docs/imgs/example/time_statistic.jpeg)
 
-### 功能5: 收集CUDA算子调用堆栈
+![time_statistic](docs/imgs/example/time_statistic.jpg)
+
+### 功能5：打印Runtime的参数
+
+```bash
+HOOK_ENABLE_TRACE=xpu_malloc=0b10 python run.py
+HOOK_ENABLE_TRACE=xpu_malloc=0x2 python run.py
+```
+
+在程序运行过程中会显示:
+
+![print_args](docs/imgs/example/print_args.jpg)
+
+### 功能6: 收集CUDA算子调用堆栈
 - 找到nvcc安装路径
 `which nvcc`  
 - 用我们的nvcc替换系统的nvcc（我们只是在编译选项加了`-g`）  
@@ -97,7 +114,7 @@ LOG_SYNC_MODE=1 LOG_LEVEL=PROFILE=INFO python run.py
 | 环境变量 | 默认值 | 简短说明 |
 | - | - | - |
 | LOG_LEVEL         | WARN                            | 设置全局和各个日志模块的日志级别  |
-| HOOK_ENABLE_TRACE | 全部接口默认值为0（关闭backtrace）  | 是否开启backtrace             |
+| HOOK_ENABLE_TRACE | 全部接口默认值为0（关闭backtrace）  | 是否开启backtrace或参数打印     |
 | LOG_OUTPUT_PATH   | ""                              | 是否将日志重定向到文件          |
 | LOG_SYNC_MODE     | 0                               | 是否使用同步日志输出            |
 
@@ -112,10 +129,17 @@ LOG_SYNC_MODE=1 LOG_LEVEL=PROFILE=INFO python run.py
 - **说明**: 设置全局和各个日志模块的日志级别
 
 ### HOOK_ENABLE_TRACE
-- **用法示例**: `export HOOK_ENABLE_TRACE='xpu_memcpy=1,xpu_set_device=0'`
+- **用法示例**: `export HOOK_ENABLE_TRACE='xpu_memcpy=1,xpu_set_device=0,xpu_wait=0x1'`
 - **可选值**: xpu_malloc, xpu_free, xpu_wait, xpu_memcpy, xpu_set_device, xpu_current_device
 - **默认值**: 所有接口的默认值均为0，即所有接口默认关闭backtrace
-- **说明**: 是否开启backtrace
+- **说明**: 是否开启backtrace和参数打印
+
+`HOOK_ENABLE_TRACE`可接收十进制、二进制和十六进制的数字，不同的位作为不同的开关
+
+| Bit | 开关说明 |
+| - | - |
+| 0 | 是否开启backtrace |
+| 1 | 是否开启参数打印 |
 
 ### LOG_OUTPUT_PATH
 - **用法示例**: `export LOG_OUTPUT_PATH='/tmp/'`
@@ -150,3 +174,17 @@ installer = PythonHookInstaller(lib)
 - `is_target_symbol` 是否是要hook的目标函数名字（上面接口返回True才回调到这个接口）
 - `new_symbol_name` 构造函数中传入共享库中的新的用于替换的函数名字，参数`name`：当前准备替换的函数名字
 - `dynamic_obj` 可以运行时编译c++ code，支持引用所有模块：`logger`、`statistics`
+
+## 贡献代码
+
+### 调试编译
+
+```bash
+# 编译
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=`$pwd/`build -DENABLE_BUILD_WITH_GTEST=ON -GNinja
+cmake --build build
+
+# 运行单测
+cd build
+ctest -R
+```

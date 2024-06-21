@@ -282,11 +282,15 @@ std::string args_to_string(Args... args) {
     do {                                                                      \
         int ctrl = enable_log_backtrace(func);                                \
         if (ctrl) {                                                           \
-            if (!(ctrl & 0b10)) MLOG(TRACE, WARN) << args_to_string(args...); \
-            trace::CallFrames callFrames;                                     \
-            callFrames.CollectNative();                                       \
-            callFrames.CollectPython();                                       \
-            MLOG(TRACE, WARN) << func << " with frame:\n" << callFrames;      \
+            if (ctrl & 0b10) {                                                \
+                MLOG(TRACE, WARN) << func << ": " << args_to_string(args...); \
+            }                                                                 \
+            if (ctrl & 0b01) {                                                \
+                trace::CallFrames callFrames;                                 \
+                callFrames.CollectNative();                                   \
+                callFrames.CollectPython();                                   \
+                MLOG(TRACE, WARN) << func << " with frame:\n" << callFrames;  \
+            }                                                                 \
         }                                                                     \
     } while (0)
 
