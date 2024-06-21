@@ -130,7 +130,7 @@ HOOK_ENABLE_TRACE=xpu_malloc=0x2 python run.py
 
 ### HOOK_ENABLE_TRACE
 - **用法示例**: `export HOOK_ENABLE_TRACE='xpu_memcpy=1,xpu_set_device=0,xpu_wait=0x1'`
-- **可选值**: xpu_malloc, xpu_free, xpu_wait, xpu_memcpy, xpu_set_device, xpu_current_device
+- **可选值**: xpu_malloc, xpu_free, xpu_wait, xpu_memcpy, xpu_set_device, xpu_current_device, xpu_launch_async
 - **默认值**: 所有接口的默认值均为0，即所有接口默认关闭backtrace
 - **说明**: 是否开启backtrace和参数打印
 
@@ -144,7 +144,7 @@ HOOK_ENABLE_TRACE=xpu_malloc=0x2 python run.py
 ### LOG_OUTPUT_PATH
 - **用法示例**: `export LOG_OUTPUT_PATH='/tmp/'`
 - **可选值**: 日志输出文件夹
-- **默认值**: -
+- **默认值**: ""
 - **说明**: 是否将日志重定向到文件, 默认是输出到标准输出
 
 ### LOG_SYNC_MODE
