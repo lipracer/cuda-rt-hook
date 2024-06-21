@@ -1,8 +1,8 @@
 # cuda-rt-hook(cuda_mock)
 
-cuda-rt-hook（cuda_mock）是一个用于拦截CUDA/XPU Runtime接口(例如, `cudaMalloc`和`xpu_malloc`)调用的Python库，通过修改PLT(Procedure Linkage Table)来实现动态拦截，无需重新编译PyTorch、Paddle等复杂框架，安装后即可使用，在调用堆栈追踪、调用耗时统计以及Paddle/PyTorch训练和推理的精度调试和性能优化等场景下非常有用。
+cuda-rt-hook（cuda_mock）是一个用于拦截CUDA/XPU Runtime接口(例如，`cudaMalloc`和`xpu_malloc`)调用的Python库，通过修改PLT(Procedure Linkage Table)来实现动态拦截，无需重新编译PyTorch、Paddle等复杂框架，安装后即可使用，在调用堆栈追踪、调用耗时统计以及Paddle/PyTorch训练和推理的精度调试和性能优化等场景下非常有用。
 
-本项目的灵感来自于[plthook](https://github.com/kubo/plthook)项目。
+本项目的灵感来自于[plthook](https://github.com/kubo/plthook)项目，项目的初衷是通过拦截CUDA的Runtime调用转为调用mock函数，可以在没有CUDA和GPU环境的情况下运行和调试[triton](https://github.com/triton-lang/triton)等项目，因而项目取名cuda_mock。后续增加了多个功能，使得cuda_mock项目可以用于模型的调试和性能分析。
 
 ## 安装
 
@@ -25,7 +25,7 @@ pip install dist/*.whl
 
 ## 快速开始
 
-找到Paddle/PyTorch模型的训练/推理脚本入口, 在首次`import torch`/`import paddle`之后添加如下代码:
+找到Paddle/PyTorch模型的训练/推理脚本入口，在首次`import torch`/`import paddle`之后添加如下代码:
 
 ```python
 import paddle
