@@ -105,8 +105,11 @@ HOOK_API void print_hook_start_capture() { __print_hook_start_capture(); }
 HOOK_API void print_hook_end_capture(PyObject* py_instance) {
     auto cpp_string = __print_hook_end_capture();
     LOG(INFO) << "__print_hook_end_capture:" << cpp_string;
-
+    // Always initialize threads at startup, like in Py_Initialize for Cpython3.9
+    // https://doc.pypy.org/en/latest/release-v7.3.14.html#id2
+#ifndef PYPY_VERSION
     Py_Initialize();
+#endif
     CHECK(Py_IsInitialized(), "python interpreter uninitialized");
 
     PyGILState_STATE gstate = PyGILState_Ensure();
@@ -128,7 +131,11 @@ HOOK_API void patch_runtime() { dh_patch_runtime(); }
 
 HOOK_API bool call_python_method_bool(PyObject* py_instance, HookString_t name,
                                       HookString_t value) {
+    // Always initialize threads at startup, like in Py_Initialize for Cpython3.9
+    // https://doc.pypy.org/en/latest/release-v7.3.14.html#id2
+#ifndef PYPY_VERSION
     Py_Initialize();
+#endif
     CHECK(Py_IsInitialized(), "python interpreter uninitialized");
 
     PyGILState_STATE gstate = PyGILState_Ensure();
@@ -155,7 +162,11 @@ HOOK_API bool call_python_method_bool(PyObject* py_instance, HookString_t name,
 HOOK_API HookString_t call_python_method_string(PyObject* py_instance,
                                                 HookString_t name,
                                                 HookString_t value) {
+    // Always initialize threads at startup, like in Py_Initialize for Cpython3.9
+    // https://doc.pypy.org/en/latest/release-v7.3.14.html#id2
+#ifndef PYPY_VERSION
     Py_Initialize();
+#endif
     CHECK(Py_IsInitialized(), "python interpreter uninitialized");
 
     PyGILState_STATE gstate = PyGILState_Ensure();
