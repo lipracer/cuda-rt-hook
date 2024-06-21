@@ -6,9 +6,6 @@
 #include <errno.h>
 #include <execinfo.h>
 #include <frameobject.h>
-#if PY_VERSION_HEX >= 0x03090000
-#include <pytypedefs.h>
-#endif
 #include <unistd.h>
 
 #include <algorithm>
