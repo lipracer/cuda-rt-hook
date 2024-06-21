@@ -51,13 +51,13 @@ bool CallFrames::CollectNative() {
 bool CallFrames::CollectPython() {
     python_frames_.clear();
     python_frames_.reserve(kMaxStackDeep);
-    // The PyPy version does not yet support retrieving the Python stack.
-#ifndef PYPY_VERSION
     // https://stackoverflow.com/questions/33637423/pygilstate-ensure-after-py-finalize
     if (!Py_IsInitialized()) {
         LOG(WARN) << "python process finished!";
         return false;
     }
+    // The PyPy version does not yet support retrieving the Python stack.
+#ifndef PYPY_VERSION
     // Acquire the Global Interpreter Lock (GIL) before calling Python C API
     // functions from non-Python threads.
     PyGILState_STATE gstate = PyGILState_Ensure();
@@ -98,9 +98,10 @@ bool CallFrames::CollectPython() {
     } else {
         LOG(WARN) << "PyThreadState_GET failed";
     }
-#endif
 
     PyGILState_Release(gstate);
+#endif
+
     if (python_frames_.empty()) {
         python_frames_.push_back("[empty stack]");
     }
