@@ -34,6 +34,21 @@ TEST(EnvUtil, env_util) {
 
     EXPECT_EQ(vec[1].first, "xpu_set_device");
     EXPECT_EQ(vec[1].second, 1);
+
+    setenv("hook_ctr", "xpu_wait=0x3,xpu_set_device=0b101", 1);
+    vec = hook::get_env_value<std::vector<std::pair<std::string, int>>>(
+        "hook_ctr");
+    EXPECT_EQ(vec[0].first, "xpu_wait");
+    EXPECT_EQ(vec[0].second, 0x3);
+
+    EXPECT_EQ(vec[1].first, "xpu_set_device");
+    EXPECT_EQ(vec[1].second, 0b101);
+
+    // error case
+    setenv("hook_ctr", "xpu_wait=NOTANUBER", 1);
+    pairv = hook::get_env_value<std::pair<std::string, int>>("hook_ctr");
+    EXPECT_EQ(pairv.first, "xpu_wait");
+    EXPECT_EQ(pairv.second, 0);
 }
 
 TEST(Backtrace, env) {

@@ -31,6 +31,34 @@ struct str2value_impl {
     }
 };
 
+template <>
+struct str2value_impl<int> {
+    void operator()(int& value, const char* cstr, size_t len = std::string::npos) {
+        int base = 0;
+        std::string str;
+
+        if (len != std::string::npos) {
+            str = std::string(cstr, cstr + len);
+        } else {
+            str = cstr;
+        }
+
+        // special handiling for binary number
+        if (str.compare(0, 2, "0b") == 0) {
+            str.erase(0, 2);
+            base = 2;
+        }
+
+        try {
+            value = std::stoi(str, nullptr, base);
+        } catch (const std::invalid_argument&) {
+            value = 0;
+        } catch (const std::out_of_range&) {
+            value = 0;
+        }
+    }
+};
+
 template <typename T>
 struct str2value {
     T operator()(const char* str, size_t len = std::string::npos) {
