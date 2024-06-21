@@ -31,9 +31,17 @@ set_target_properties(xpu_mock_improve
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_INSTALL_PREFIX}/cuda_mock
 )
 
-target_include_directories(cuda_mock PUBLIC ${Python_INCLUDE_DIRS})
-target_link_libraries(cuda_mock PRIVATE ${PYTHON_LIBRARIES} xpu_mock_improve)
-
+if (NOT PUBLISH_BUILD)
+    find_package(PythonLibs REQUIRED)
+    target_include_directories(cuda_mock PUBLIC ${Python_INCLUDE_DIRS})
+    target_link_libraries(cuda_mock PRIVATE ${PYTHON_LIBRARIES} xpu_mock_improve)
+else ()
+    message(STATUS "Use PUBLISH_BUILD")
+    message(STATUS "PYTHON_INCLUDE_DIR is ${PYTHON_INCLUDE_DIR}")
+    message(STATUS "PYTHON_LIBRARY is ${PYTHON_LIBRARY}")
+    target_include_directories(cuda_mock PUBLIC ${PYTHON_INCLUDE_DIR})
+    target_link_libraries(cuda_mock PRIVATE ${PYTHON_LIBRARY} xpu_mock_improve)
+endif ()
 
 set_target_properties(cuda_mock PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
