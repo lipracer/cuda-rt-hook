@@ -51,7 +51,8 @@ bool CallFrames::CollectNative() {
 bool CallFrames::CollectPython() {
     python_frames_.clear();
     python_frames_.reserve(kMaxStackDeep);
-//#if PY_VERSION_HEX < 0x03090000 || defined(PYPY_VERSION)
+    // The PyPy version does not yet support retrieving the Python stack.
+#ifndef PYPY_VERSION
     // https://stackoverflow.com/questions/33637423/pygilstate-ensure-after-py-finalize
     if (!Py_IsInitialized()) {
         LOG(WARN) << "python process finished!";
@@ -64,7 +65,7 @@ bool CallFrames::CollectPython() {
     PyThreadState* tstate = PyThreadState_GET();
     if (tstate) {
         python_frames_.push_back("  Python frame:");
-#if PY_VERSION_HEX < 0x03090000 || defined(PYPY_VERSION)
+#if PY_VERSION_HEX < 0x03090000
         PyFrameObject* frame = tstate->frame;
 #else
         PyFrameObject* frame = PyThreadState_GetFrame(tstate);
@@ -75,7 +76,7 @@ bool CallFrames::CollectPython() {
             frame->f_lineno will not always return the correct line number
             you need to call PyCode_Addr2Line().
             */
-#if PY_VERSION_HEX < 0x03090000 || defined(PYPY_VERSION)
+#if PY_VERSION_HEX < 0x03090000
             int line = PyCode_Addr2Line(frame->f_code, frame->f_lasti);
             const char* filename = PyUnicode_AsUTF8(frame->f_code->co_filename);
             const char* funcname = PyUnicode_AsUTF8(frame->f_code->co_name);
@@ -88,7 +89,7 @@ bool CallFrames::CollectPython() {
             std::stringstream ss;
             ss << "    " << filename << "(" << line << "): " << funcname;
             python_frames_.push_back(ss.str());
-#if PY_VERSION_HEX < 0x03090000 || defined(PYPY_VERSION)
+#if PY_VERSION_HEX < 0x03090000
             frame = frame->f_back;
 #else
             frame = PyFrame_GetBack(frame);
@@ -97,6 +98,7 @@ bool CallFrames::CollectPython() {
     } else {
         LOG(WARN) << "PyThreadState_GET failed";
     }
+#endif
 
     PyGILState_Release(gstate);
     if (python_frames_.empty()) {
