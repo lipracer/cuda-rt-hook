@@ -444,6 +444,7 @@ LogStream& LogStream::instance(const LogConfig& cfg) {
     {
         signal(SIGSEGV, core_dump_handler);
         signal(SIGABRT, core_dump_handler);
+signal(SIGTERM, core_dump_handler);
     }
 
     return *__instance;
