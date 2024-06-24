@@ -1,4 +1,4 @@
-name: C++ CI
+name: C++ Python UnitTest CI
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
       - main
 
 jobs:
-  build:
+  unit-test:
     runs-on: ubuntu-latest
 
     steps:

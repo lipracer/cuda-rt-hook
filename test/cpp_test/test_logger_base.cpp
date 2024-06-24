@@ -27,7 +27,6 @@ struct CombinString {};
 //     return CombinString<h0.str_[idx]...>();
 // }
 
-
 TEST(logger, string_literal) {
     std::cout << strlen("123") << std::endl;
     auto string_literal = logger::makeStringLiteral("123");
@@ -68,8 +67,8 @@ TEST(logger, sync_logger) {
 TEST(logger, overflow) {
     std::string line(128, 'A');
     std::string large_msg;
-    for(size_t i = 0; i < 30; ++i) {
-    large_msg = large_msg + line + '\n';
+    for (size_t i = 0; i < 30; ++i) {
+        large_msg = large_msg + line + '\n';
     }
     LOG(WARN) << large_msg;
 }

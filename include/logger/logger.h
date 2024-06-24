@@ -456,6 +456,8 @@ void initLogger(const LogConfig& = LogConfig{});
 
 void destroy_logger();
 
+void regist_on_exit(const std::function<void(void)>& OnExit = {});
+
 }  // namespace logger
 
 #define INFO logger::LogLevel::info
