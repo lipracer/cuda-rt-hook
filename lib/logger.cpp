@@ -222,12 +222,23 @@ class LogStreamCollection {
         return std::move(consumer_);
     }
 
+    void regist_on_exit(const std::function<void(void)>& on_exit) {
+        on_exit_ = on_exit;
+    }
+
+    const std::function<void(void)>& on_exit() const { return on_exit_; }
+
    private:
     std::mutex stream_mtx;
     std::mutex consumer_mtx;
     std::unordered_set<LogStream*> stream_set;
     std::shared_ptr<LogConsumer> consumer_;
+    std::function<void(void)> on_exit_;
 };
+
+void regist_on_exit(const std::function<void(void)>& OnExit) {
+    LogStreamCollection::instance().regist_on_exit(OnExit);
+}
 
 static bool checkPathNotExistCreateIt(const std::string& path) {
     if (access(path.c_str(), F_OK) == -1) {
@@ -426,7 +437,10 @@ void destroy_logger();
 
 void core_dump_handler(int signum) {
     auto consumer = LogStreamCollection::instance().release_consumer();
+    // TODO: move to destructor
     consumer->sync_pause_loop();
+    auto on_exit = LogStreamCollection::instance().on_exit();
+    if (on_exit) on_exit();
     exit(signum);
 }
 
@@ -444,7 +458,7 @@ LogStream& LogStream::instance(const LogConfig& cfg) {
     {
         signal(SIGSEGV, core_dump_handler);
         signal(SIGABRT, core_dump_handler);
-signal(SIGTERM, core_dump_handler);
+        signal(SIGTERM, core_dump_handler);
     }
 
     return *__instance;
@@ -514,6 +528,7 @@ void initLogger(const LogConfig& cfg) { (void)LogStream::instance(cfg); }
 void destroy_logger() {
     LogStreamCollection::instance().release_all_stream();
     auto consumer = LogStreamCollection::instance().release_consumer();
+    // TODO: move to destructor
     consumer->sync_pause_loop();
 }
 
