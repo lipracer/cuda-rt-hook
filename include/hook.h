@@ -230,8 +230,8 @@ auto wrapCurrentIter() {
     return TimeStatisticWrapIter<HookRuntimeContext::vec_type::iterator>(
         iter, [=](std::chrono::nanoseconds dur) {
             iter->second.increase_cost(dur.count());
-            MLOG(PROFILE, INFO) << iter->first.sym_name << " costs "
-                                << dur.count() << "ns";
+            MLOG(PROFILE, INFO)
+                << iter->first.sym_name << " costs " << dur.count() << "ns";
         });
 }
 
@@ -338,15 +338,30 @@ constexpr void* GetMapedFunc(size_t UniqueId, R (*new_func)(Args...)) {
     return GetMapedFuncImpl<0>(UniqueId, new_func);
 }
 
-struct HookFeature {
+struct HookFeatureBase {
     template <size_t N, typename R, typename... Args, typename T>
-    constexpr HookFeature(const char (&sym_name)[N], R (*new_func)(Args...),
+    constexpr HookFeatureBase(const char (&sym_name)[N], R (*new_func)(Args...),
                           T** old_func,
                           const std::function<bool(void)>& filter = {})
         : symName(sym_name),
           newFunc(reinterpret_cast<void*>(new_func)),
           oldFunc(reinterpret_cast<void**>(old_func)),
-          filter_(filter) {
+          filter_(filter) {}
+
+    void* getNewFunc(const char* libName = nullptr) { return newFunc; }
+
+    const char* symName;
+    void* newFunc;
+    void** oldFunc;
+    std::function<bool(void)> filter_;
+};
+
+struct HookFeature : public HookFeatureBase {
+    template <size_t N, typename R, typename... Args, typename T>
+    constexpr HookFeature(const char (&sym_name)[N], R (*new_func)(Args...),
+                          T** old_func,
+                          const std::function<bool(void)>& filter = {})
+        : HookFeatureBase(sym_name, new_func, old_func, filter) {
         findUniqueFunc = [=](size_t uniqueId) {
             return GetMapedFunc(uniqueId, new_func);
         };
@@ -366,11 +381,7 @@ struct HookFeature {
         return newFunc;
     }
 
-    const char* symName;
-    void* newFunc;
-    void** oldFunc;
     std::function<void*(size_t)> findUniqueFunc;
-    std::function<bool(void)> filter_;
 };
 
 template <typename DerivedT>
@@ -428,7 +439,7 @@ struct HookInstallerWrap
 
     ~HookInstallerWrap() {
         for (auto& handle : handle_map_) {
-            LOG(WARN) << "close lib:" << handle.first;
+            MLOG(HOOK, INFO) << "close lib:" << handle.first;
             dlclose(handle.second);
         }
         MLOG(HOOK, INFO) << "HookInstallerWrap<" << typeid(DerivedT).name()
@@ -476,7 +487,7 @@ struct HookInstallerWrap
         }
         auto lib_handle = dlopen(full_src_lib_name_.c_str(), RTLD_LAZY);
         if (!lib_handle) {
-            LOG(INFO) << "can't open lib:" << full_src_lib_name_;
+            MLOG(HOOK, INFO) << "can't open lib:" << full_src_lib_name_;
         } else {
             handle_map_.insert(
                 std::pair<std::string, void*>(full_src_lib_name_, lib_handle));

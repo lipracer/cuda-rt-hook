@@ -155,6 +155,9 @@ HOOK_ENABLE_TRACE=xpu_malloc=0x2 python run.py
 
 ## 高级功能
 
+### 注意
+hook函数要与被替换函数类型要保持一致，但是函数名字（特别指mangle后的名字）不能一样，否则会替换失败，或者无限递归调用，暂时未定位！
+
 ### 实现自定义hook函数  
 实现自定义hook installer例子:
 

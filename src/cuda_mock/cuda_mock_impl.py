@@ -247,7 +247,3 @@ def xpu_runtime_profile():
     internal_install_hook_regex(r"libxpurt\.so\..*", r"[^(libxpurt\.so\..*)]", "xpu_launch_argument_set", str(lib), "xpu_launch_argument_set")
     internal_install_hook_regex(r"libxpurt\.so\..*", r"[^(libxpurt\.so\..*)]", "xpu_launch_async", str(lib), "xpu_launch_async")
     internal_install_hook_regex(r"libxpurt\.so\..*", r"[^(libxpurt\.so\..*)]", "xpu_launch_config", str(lib), "xpu_launch_config")
-
-
-def triton_mock():
-    return cuda_mock_impl.triton_mock()

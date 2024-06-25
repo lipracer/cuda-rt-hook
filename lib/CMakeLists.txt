@@ -21,7 +21,6 @@ add_library(cuda_mock STATIC
     cuda_op_tracer.cpp
     cuda_mock.cpp
     xpu_mock.cpp
-    triton_mock.cpp
 )
 
 add_library(xpu_mock_improve SHARED hooks/print_hook.cpp)
