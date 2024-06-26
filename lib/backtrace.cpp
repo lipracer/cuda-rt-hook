@@ -10,8 +10,8 @@
 
 #include <algorithm>
 #include <fstream>
-#include <regex>
 #include <iomanip>
+#include <regex>
 
 #include "logger/logger.h"
 #include "support.h"
@@ -37,7 +37,8 @@ bool CallFrames::CollectNative() {
             auto demangled = __support__demangle(info.dli_sname);
             std::string path(info.dli_fname);
             std::stringstream ss;
-            ss << "    frame #" << std::setw(align_length) << std::right << j << " " << path << ":" << demangled;
+            ss << "    frame #" << std::setw(align_length) << std::right << j
+               << " " << path << ":" << demangled;
             native_frames_.push_back(ss.str());
         } else {
             // filtering useless print
@@ -128,10 +129,10 @@ bool BackTraceCollection::CallStackInfo::snapshot() {
     if (symbols == nullptr) {
         return false;
     }
-    LOG(INFO) << "get stack deep num:" << num;
+    MLOG(TRACE, INFO) << "get stack deep num:" << num;
     for (int j = 0; j < num; j++) {
-        LOG(INFO) << "current frame " << j << " addr:" << buffer[j]
-                  << " symbol:" << symbols[j];
+        MLOG(TRACE, INFO) << "current frame " << j << " addr:" << buffer[j]
+                          << " symbol:" << symbols[j];
         backtrace_addrs_.push_back(buffer[j]);
         backtrace_.emplace_back(symbols[j]);
     }
@@ -154,7 +155,7 @@ void BackTraceCollection::CallStackInfo::test_feed_and_parse() {
 }
 
 static std::vector<std::string> exec_shell(const std::string& cmd) {
-    LOG(INFO) << "exec_shell:" << cmd;
+    MLOG(TRACE, INFO) << "exec_shell:" << cmd;
     auto pf = popen(cmd.c_str(), "r");
     if (!pf) {
         LOG(WARN) << "popen cmd:" << cmd << "fail!";
@@ -174,7 +175,7 @@ static std::vector<std::string> exec_shell(const std::string& cmd) {
             str_length -= 1;
         }
         buf.resize(str_length);
-        LOG(INFO) << buf;
+        MLOG(TRACE, INFO) << buf;
         results.emplace_back(std::move(buf));
     }
     if (pclose(pf) == -1) {
