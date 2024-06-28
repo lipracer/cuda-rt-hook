@@ -103,6 +103,7 @@ struct StringLiteral : public StringLiteralBase {
     char str_[N] = {0};
 
     constexpr operator const char*() const { return str_; }
+    constexpr char operator[](size_t index) const { return str_[index]; }
 
     constexpr auto simpleFileSize() const {
         for (int i = N - 1; i > 0; --i) {

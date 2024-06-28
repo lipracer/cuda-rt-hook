@@ -316,17 +316,19 @@ struct MapedFunc<UniqueId, void, Args...> {
     }
 };
 
+static constexpr size_t kMaxLibrarySize = 256;
+
 template <size_t N, typename R, typename... Args>
 constexpr void* GetMapedFuncImpl(
     size_t UniqueId, R (*new_func)(Args...),
-    typename std::enable_if_t<N == 256, void*>* = nullptr) {
+    typename std::enable_if_t<N == kMaxLibrarySize, void*>* = nullptr) {
     return nullptr;
 }
 
 template <size_t N, typename R, typename... Args>
 constexpr void* GetMapedFuncImpl(size_t UniqueId, R (*new_func)(Args...),
                                  typename std::enable_if_t <
-                                     N<256, void*>* = nullptr) {
+                                     N<kMaxLibrarySize, void*>* = nullptr) {
     if (N == UniqueId) {
         return reinterpret_cast<void*>(&MapedFunc<N, R, Args...>::func);
     }
@@ -337,6 +339,45 @@ template <typename R, typename... Args>
 constexpr void* GetMapedFunc(size_t UniqueId, R (*new_func)(Args...)) {
     return GetMapedFuncImpl<0>(UniqueId, new_func);
 }
+
+template <char... strs>
+struct CombinString {};
+
+template <size_t N, size_t... idx>
+constexpr auto makeCombinStringImpl(const char (&str)[N], std::index_sequence<idx...>) {
+    return CombinString<str[idx]...>();
+}
+template <size_t N>
+constexpr auto makeCombinString(const char (&str)[N]) {
+    return makeCombinStringImpl(str, std::make_index_sequence<N>());
+}
+
+
+// TODO
+// use func name as template arguments, then generate functions map:
+// name0: {func0, func1, func2...}
+// name1: {func0, func1, func2...}
+// ...
+// reduce the template functions count and then reduce complitation time
+template <typename R, typename... Args>
+class WrapGenerator {
+   public:
+    typedef R (*type)(Args...);
+
+    WrapGenerator() { gen(); }
+
+    template <size_t... Idxs>
+    void gen_impl(std::index_sequence<Idxs...>) {
+        funcs_ = {
+            reinterpret_cast<void*>(&MapedFunc<Idxs, R, Args...>::func)...};
+    }
+    void gen() { gen_impl(std::make_index_sequence<kMaxLibrarySize>()); }
+
+    void* getFunction(size_t index) const { return funcs_[index]; }
+
+   private:
+    std::vector<void*> funcs_;
+};
 
 struct HookFeatureBase {
     template <size_t N, typename R, typename... Args, typename T>
@@ -356,14 +397,23 @@ struct HookFeatureBase {
     std::function<bool(void)> filter_;
 };
 
+
+
 struct HookFeature : public HookFeatureBase {
     template <size_t N, typename R, typename... Args, typename T>
     constexpr HookFeature(const char (&sym_name)[N], R (*new_func)(Args...),
                           T** old_func,
                           const std::function<bool(void)>& filter = {})
         : HookFeatureBase(sym_name, new_func, old_func, filter) {
+#if 0
+        WrapGenerator<R, Args...> generator;
+#endif
         findUniqueFunc = [=](size_t uniqueId) {
+#if 0
+            return generator.getFunction(uniqueId);
+#else
             return GetMapedFunc(uniqueId, new_func);
+#endif
         };
     }
 
