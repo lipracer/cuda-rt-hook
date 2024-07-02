@@ -142,6 +142,35 @@ constexpr static auto makeStringLiteral(const char (&str)[N]) {
     return StringLiteral<N>(str);
 }
 
+template <char... chr>
+struct TypeStr {
+    operator std::string() {
+        std::string str = {chr...};
+        return str;
+    }
+};
+
+template <size_t N, const char (&str)[N]>
+struct TypeStrGenerator {
+    template <size_t... idx>
+    static constexpr auto gen(std::index_sequence<idx...>) {
+        return TypeStr<str[idx]...>();
+    }
+
+    template <size_t M>
+    static constexpr size_t strlen(const char (&)[M]) {
+        return M;
+    }
+    using type = decltype(gen(std::make_index_sequence<N>()));
+};
+
+#define STR_TO_TYPE(str)                                   \
+    decltype([]() -> auto {                                \
+        constexpr const char ls[] = str;                   \
+        constexpr size_t N = TypeStrGenerator::strlen(ls); \
+        return TypeStrGenerator<N, ls>::type();            \
+    })
+
 namespace {
 
 template <size_t N>
