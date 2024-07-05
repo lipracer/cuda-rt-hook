@@ -1,3 +1,2 @@
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib)
-install(TARGETS plthook DESTINATION ${CMAKE_BINARY_DIR}/lib)
-set(plthook "${CMAKE_BINARY_DIR}/lib/libplthook.a")
+add_library(cuda_mock SHARED IMPORTED) 
+set_target_properties(cuda_mock PROPERTIES IMPORTED_LOCATION ${CMAKE_MODULE_PATH}/libcuda_mock_impl.so)

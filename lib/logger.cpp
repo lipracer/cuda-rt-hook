@@ -464,9 +464,9 @@ LogStream& LogStream::instance(const LogConfig& cfg) {
     return *__instance;
 }
 
-LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
-                     const std::shared_ptr<LogConfig>& cfg)
-    : logConsumer_(logConsumer), cfg_(cfg) {
+void setLoggerLevel(
+    std::array<LogLevel, static_cast<size_t>(LogModule::last) + 1>& module_set_,
+    LogLevel& level_) {
     auto modules = hook::get_env_value<
         std::vector<std::pair<std::string, logger::LogLevel>>>(
         env_mgr::LOG_LEVEL);
@@ -479,7 +479,7 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
         if (modules.end() != iter) {
             size_t IntModule =
                 static_cast<size_t>(LogModuleHelper::strToEnum(name));
-            CHECK_LT(IntModule, sizeof(module_set_) / sizeof(module_set_[0]));
+            assert(IntModule < sizeof(module_set_) / sizeof(module_set_[0]));
             module_set_[IntModule] = iter->second;
         }
     }
@@ -495,10 +495,15 @@ LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
         level_ = static_cast<LogLevel>(default_lvl_iter -
                                        std::begin(gLoggerLevelStringSet()));
     }
+}
+
+LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
+                     const std::shared_ptr<LogConfig>& cfg)
+    : logConsumer_(logConsumer), cfg_(cfg) {
 #ifdef DEBUG_LOGER
     std::cout << "parse level_:" << static_cast<int>(level_) << std::endl;
 #endif
-
+    setLoggerLevel(module_set_, level_);
     LogStreamCollection::instance().collect(this);
     {
         std::stringstream ss;

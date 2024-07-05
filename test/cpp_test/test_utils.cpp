@@ -71,6 +71,17 @@ TEST(StringRef, member) {
     EXPECT_EQ(adt::StringRef("abcdnnn"), "abcdnnn");
     EXPECT_NE(adt::StringRef("abcdnnn"), "sabcdnnn");
     EXPECT_TRUE(adt::StringRef("abcd").contain("bc"));
+
+    EXPECT_TRUE(adt::StringRef("abcd").startsWith("ab"));
+    EXPECT_TRUE(adt::StringRef("abcd").startsWith("abc"));
+    EXPECT_TRUE(adt::StringRef("abcd").startsWith("abcd"));
+
+    EXPECT_TRUE(adt::StringRef("abcd").endsWith("d"));
+    EXPECT_TRUE(adt::StringRef("abcd").endsWith("cd"));
+    EXPECT_TRUE(adt::StringRef("abcd").endsWith("abcd"));
+
+    EXPECT_EQ(adt::StringRef("abcd").drop_front(2), adt::StringRef("cd"));
+    EXPECT_EQ(adt::StringRef("abcd").drop_back(2), adt::StringRef("ab"));
 }
 
 

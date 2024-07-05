@@ -54,6 +54,7 @@ struct InstallPreDefine : public HookInstallerWrap<InstallPreDefine> {
 
 TEST(TestHookPreDefine, install) {
     gHook = true;
+    libc_malloc = nullptr;
     (void)malloc(16);
     {
         auto installer = std::make_shared<InstallPreDefine>();
@@ -84,4 +85,70 @@ TEST(TestHookWrap, log) {
 
     auto new_func = symbols[0].getNewFunc("test");
     reinterpret_cast<decltype(&test_func)>(new_func)(123);
+}
+
+void* feature_malloc(size_t size) { return nullptr; }
+
+void feature_free(void*) {}
+
+void feature_memcpy(void*, void*, size_t) {}
+
+TEST(TestHookWrap, feature) {
+    hook::HookRuntimeContext::instance().clear();
+    void* old_molloc = nullptr;
+    void* old_free = nullptr;
+    void* old_memcpy = nullptr;
+    __HookFeature<FastGenerator> feature0(STR_TO_TYPE("malloc"),
+                                          &feature_malloc, &old_molloc);
+    __HookFeature<FastGenerator> feature1(STR_TO_TYPE("free"), &feature_free,
+                                          &old_free);
+    HookFeature feature2("memcpy", &feature_memcpy, &old_memcpy);
+
+    auto main_malloc =
+        reinterpret_cast<decltype(&feature_malloc)>(feature0.getNewFunc(""));
+    auto main_free =
+        reinterpret_cast<decltype(&feature_free)>(feature1.getNewFunc(""));
+    auto main_memcpy =
+        reinterpret_cast<decltype(&feature_memcpy)>(feature2.getNewFunc(""));
+
+    auto test0_malloc = reinterpret_cast<decltype(&feature_malloc)>(
+        feature0.getNewFunc("test0"));
+    auto test0_free =
+        reinterpret_cast<decltype(&feature_free)>(feature1.getNewFunc("test0"));
+    auto test0_memcpy = reinterpret_cast<decltype(&feature_memcpy)>(
+        feature2.getNewFunc("test0"));
+
+    auto test1_memcpy = reinterpret_cast<decltype(&feature_memcpy)>(
+        feature2.getNewFunc("test1"));
+
+    main_malloc(0);
+    main_free(nullptr);
+    main_memcpy(nullptr, nullptr, 0);
+
+    test0_malloc(0);
+    test0_free(nullptr);
+    test0_memcpy(nullptr, nullptr, 0);
+
+    test1_memcpy(nullptr, nullptr, 0);
+    test1_memcpy(nullptr, nullptr, 0);
+    test0_malloc(0);
+
+    EXPECT_EQ(hook::HookRuntimeContext::instance().getCallCount("", "malloc"),
+              1);
+    EXPECT_EQ(hook::HookRuntimeContext::instance().getCallCount("", "free"), 1);
+    EXPECT_EQ(hook::HookRuntimeContext::instance().getCallCount("", "memcpy"),
+              1);
+
+    EXPECT_EQ(
+        hook::HookRuntimeContext::instance().getCallCount("test0", "malloc"),
+        2);
+    EXPECT_EQ(
+        hook::HookRuntimeContext::instance().getCallCount("test0", "free"), 1);
+    EXPECT_EQ(
+        hook::HookRuntimeContext::instance().getCallCount("test0", "memcpy"),
+        1);
+
+    EXPECT_EQ(
+        hook::HookRuntimeContext::instance().getCallCount("test1", "memcpy"),
+        2);
 }

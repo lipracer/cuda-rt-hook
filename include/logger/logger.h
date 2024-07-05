@@ -28,7 +28,13 @@
 
 namespace logger {
 enum class LogLevel { info = 0, warning, error, fatal, last };
-enum class LogModule { profile, trace, hook, python, last };
+enum class LogModule { profile, trace, hook, python, debug, last };
+
+#define PROFILE logger::LogModule::profile
+#define TRACE logger::LogModule::trace
+#define HOOK logger::LogModule::hook
+#define PYTHON logger::LogModule::python
+#define DEBUG logger::LogModule::debug
 
 class LogModuleHelper {
    public:
@@ -75,11 +81,6 @@ inline std::string to_string(logger::LogModule e) {
 using std::to_string;
 
 namespace logger {
-
-#define PROFILE logger::LogModule::profile
-#define TRACE logger::LogModule::trace
-#define HOOK logger::LogModule::hook
-#define PYTHON logger::LogModule::python
 
 struct StringLiteralBase {
     constexpr StringLiteralBase(size_t N) {
@@ -157,19 +158,21 @@ struct TypeStrGenerator {
         return TypeStr<str[idx]...>();
     }
 
-    template <size_t M>
-    static constexpr size_t strlen(const char (&)[M]) {
-        return M;
-    }
-    using type = decltype(gen(std::make_index_sequence<N>()));
+    using type = decltype(gen(std::make_index_sequence<N - 1>()));
 };
 
-#define STR_TO_TYPE(str)                                   \
-    decltype([]() -> auto {                                \
-        constexpr const char ls[] = str;                   \
-        constexpr size_t N = TypeStrGenerator::strlen(ls); \
-        return TypeStrGenerator<N, ls>::type();            \
-    })
+template <size_t M>
+static constexpr size_t constexpr_strlen(const char (&)[M]) {
+    return M;
+}
+
+#define STR_TO_TYPE(str)                                     \
+    []() -> auto {                                           \
+        static constexpr const char ls[] = str;              \
+        constexpr size_t N = ::logger::constexpr_strlen(ls); \
+        return ::logger::TypeStrGenerator<N, ls>::type();    \
+    }                                                        \
+    ()
 
 namespace {
 
@@ -217,6 +220,10 @@ struct LogConfig {
 
 class LogConsumer;
 
+void setLoggerLevel(
+    std::array<LogLevel, static_cast<size_t>(LogModule::last) + 1>& module_set,
+    LogLevel& mLevel);
+
 class LogStream {
    public:
     static LogStream& instance(const LogConfig& cfg = {});
@@ -229,6 +236,10 @@ class LogStream {
     void flush();
 
     LogLevel getLevel() const { return level_; }
+    LogLevel getModuleLevel(LogModule m) const {
+        return module_set_[static_cast<int>(m)];
+    }
+
     void setLevel(LogLevel level) { level_ = level; }
     void setModuleLevel(LogModule m, LogLevel level) {
         module_set_[static_cast<int>(m)] = level;
@@ -269,8 +280,8 @@ class LogStream {
     std::stringstream ss_;
     std::shared_ptr<LogConsumer> logConsumer_;
     std::shared_ptr<LogConfig> cfg_;
-    LogLevel module_set_[static_cast<size_t>(LogModule::last) + 1] = {
-        LogLevel::info};
+    std::array<LogLevel, static_cast<size_t>(LogModule::last) + 1> module_set_ =
+        {LogLevel::info};
     std::chrono::steady_clock::time_point start_point_{
         std::chrono::steady_clock::now()};
     std::string logHeader_;

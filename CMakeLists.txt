@@ -43,15 +43,17 @@ endif()
 
 # list(APPEND CMAKE_PREFIX_PATH "third_party/fmt")
 # find_package(fmt)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt EXCLUDE_FROM_ALL)
-
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib)
 
 set(DST_DIRECTORY_TO_INSTALL ${CMAKE_INSTALL_PREFIX}/cuda_mock)
 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt EXCLUDE_FROM_ALL)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib)
+
+
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include DESTINATION ${DST_DIRECTORY_TO_INSTALL})
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt/include DESTINATION ${DST_DIRECTORY_TO_INSTALL})
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/PltHook.cmake DESTINATION ${DST_DIRECTORY_TO_INSTALL})
 
 if (ENABLE_BUILD_WITH_GTEST)
 
