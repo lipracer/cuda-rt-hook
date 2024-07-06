@@ -15,6 +15,7 @@
 
 #include "GlobalVarMgr.h"
 #include "backtrace.h"
+#include "hook_context.h"
 #include "logger/logger.h"
 #include "support.h"
 
@@ -67,113 +68,6 @@ struct MemberDetector : std::false_type {
     }
 };
 
-class HookRuntimeContext {
-   public:
-    struct StringPair {
-        StringPair(const std::string& lib, const std::string& sym)
-            : lib_name(lib), sym_name(sym) {}
-        std::string lib_name;
-        std::string sym_name;
-
-        bool operator==(const StringPair& other) const {
-            return lib_name == other.lib_name && sym_name == other.sym_name;
-        }
-        bool operator!=(const StringPair& other) const {
-            return !(*this == other);
-        }
-
-        bool operator<(const StringPair& other) const {
-            return (lib_name + sym_name) < (other.lib_name + other.sym_name);
-        }
-    };
-    struct SPhash {
-        size_t operator()(const StringPair& names) const {
-            return std::hash<std::string>()(names.lib_name + names.sym_name);
-        }
-    };
-
-    struct Statistic {
-        void increase() const { ++counter_; }
-        void increase_cost(size_t time) { cost_ += time; }
-        Statistic() = default;
-        Statistic(const Statistic& other) { counter_.store(other.counter_); }
-        Statistic(Statistic&& other) { counter_.store(other.counter_); }
-        Statistic& operator=(const Statistic& other) {
-            counter_.store(other.counter_);
-            return *this;
-        }
-        Statistic& operator=(Statistic&& other) {
-            counter_.store(other.counter_);
-            return *this;
-        }
-
-        friend std::ostream& operator<<(std::ostream& os, const Statistic& s);
-
-       private:
-        mutable std::atomic<size_t> counter_{0};
-        mutable std::atomic<size_t> cost_{0};
-    };
-
-    struct StatisticPair : public std::pair<void*, void*>, public Statistic {
-        using std::pair<void*, void*>::pair;
-        StatisticPair()
-            : std::pair<void*, void*>(nullptr, nullptr), Statistic() {}
-    };
-    using vec_type = std::vector<std::pair<StringPair, StatisticPair>>;
-    using map_type = std::map<StringPair, size_t>;
-    //    using map_type = std::unordered_map<StringPair, std::pair<void*,
-    //    void*>, SPhash>;
-
-    HookRuntimeContext() = default;
-    ~HookRuntimeContext() { dump(); }
-    static HookRuntimeContext& instance();
-
-    template <typename... Args>
-    vec_type::iterator insert(
-        const std::pair<StringPair, StatisticPair>& feature) {
-        func_infos_.emplace_back(feature);
-        map_.insert(std::make_pair(feature.first, func_infos_.size() - 1));
-        return std::prev(func_infos_.end());
-    }
-
-    size_t getUniqueId(vec_type::iterator iter) {
-        return std::distance(func_infos_.begin(), iter);
-    }
-
-    vec_type::iterator& current_iter() {
-        thread_local static vec_type::iterator iter;
-        return iter;
-    }
-
-    vec_type::iterator setCurrentState(size_t UniqueId) {
-        current_iter() = func_infos_.begin();
-        std::advance(current_iter(), UniqueId);
-        current_iter()->second.increase();
-        return current_iter();
-    }
-
-    const std::string& curLibName() { return current_iter()->first.lib_name; }
-    const std::string& curSymName() { return current_iter()->first.sym_name; }
-
-    void dump();
-
-   private:
-    map_type map_;
-    std::vector<std::pair<StringPair, StatisticPair>> func_infos_;
-};
-
-struct StringLiteral {
-    template <size_t N>
-    constexpr StringLiteral(const char (&str)[N]) : str_(str), size_(N) {}
-    constexpr char operator[](size_t index) const { return str_[index]; }
-    constexpr size_t size() const { return size_; }
-
-    operator const char*() const { return str_; }
-
-   private:
-    const char* str_;
-    const size_t size_;
-};
 
 template <size_t N>
 constexpr size_t hash(const char (&str)[N]) {
@@ -183,56 +77,6 @@ constexpr size_t hash(const char (&str)[N]) {
         v |= (vv << (sizeof(size_t) - i - 3 - 1));
     }
     return v;
-}
-
-template <typename IterT>
-class TimeStatisticWrapIter {
-   public:
-    using Deleter = std::function<void(std::chrono::nanoseconds)>;
-
-    TimeStatisticWrapIter(IterT iter, Deleter deleter = {})
-        : iter_(iter), deleter_(deleter) {
-        reset();
-    }
-
-    TimeStatisticWrapIter(const TimeStatisticWrapIter&) = delete;
-    TimeStatisticWrapIter& operator=(const TimeStatisticWrapIter&) = delete;
-
-    TimeStatisticWrapIter(TimeStatisticWrapIter&& other) {
-        *this = std::move(other);
-    }
-    TimeStatisticWrapIter& operator=(TimeStatisticWrapIter&& other) {
-        iter_ = other.iter_;
-        deleter_ = other.deleter_;
-        sp_ = other.sp_;
-        return *this;
-    }
-
-    ~TimeStatisticWrapIter() {
-        auto dur = std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - sp_);
-        deleter_(dur);
-    }
-
-    void reset() { sp_ = std::chrono::steady_clock::now(); }
-
-    auto operator->() { return &*iter_; }
-
-   private:
-    IterT iter_;
-    Deleter deleter_;
-    decltype(std::chrono::steady_clock::now()) sp_;
-};
-
-template <size_t UniqueId>
-auto wrapCurrentIter() {
-    auto iter = HookRuntimeContext::instance().setCurrentState(UniqueId);
-    return TimeStatisticWrapIter<HookRuntimeContext::vec_type::iterator>(
-        iter, [=](std::chrono::nanoseconds dur) {
-            iter->second.increase_cost(dur.count());
-            MLOG(PROFILE, INFO)
-                << iter->first.sym_name << " costs " << dur.count() << "ns";
-        });
 }
 
 template <typename T, typename = void>
@@ -294,8 +138,32 @@ std::string args_to_string(Args... args) {
         }                                                                     \
     } while (0)
 
-template <size_t UniqueId, typename R, typename... Args>
+template <typename StrT, size_t UniqueId, typename R, typename... Args>
 struct MapedFunc {
+    static R func(Args... args) {
+        auto id = HookRuntimeContext::instance().getCUniqueId<StrT>(UniqueId);
+        auto iter = wrapCurrentIter(id);
+        IF_ENABLE_LOG_TRACE_AND_ARGS(
+            HookRuntimeContext::instance().curSymName().c_str());
+        iter.reset();
+        return reinterpret_cast<R (*)(Args...)>(iter->second.second)(args...);
+    }
+};
+
+template <typename StrT, size_t UniqueId, typename... Args>
+struct MapedFunc<StrT, UniqueId, void, Args...> {
+    static void func(Args... args) {
+        auto id = HookRuntimeContext::instance().getCUniqueId<StrT>(UniqueId);
+        auto iter = wrapCurrentIter(id);
+        IF_ENABLE_LOG_TRACE_AND_ARGS(
+            HookRuntimeContext::instance().curSymName().c_str());
+        iter.reset();
+        reinterpret_cast<void (*)(Args...)>(iter->second.second)(args...);
+    }
+};
+
+template <size_t UniqueId, typename R, typename... Args>
+struct MapedFunc<void, UniqueId, R, Args...> {
     static R func(Args... args) {
         auto iter = wrapCurrentIter<UniqueId>();
         IF_ENABLE_LOG_TRACE_AND_ARGS(
@@ -306,7 +174,7 @@ struct MapedFunc {
 };
 
 template <size_t UniqueId, typename... Args>
-struct MapedFunc<UniqueId, void, Args...> {
+struct MapedFunc<void, UniqueId, void, Args...> {
     static void func(Args... args) {
         auto iter = wrapCurrentIter<UniqueId>();
         IF_ENABLE_LOG_TRACE_AND_ARGS(
@@ -316,42 +184,27 @@ struct MapedFunc<UniqueId, void, Args...> {
     }
 };
 
-static constexpr size_t kMaxLibrarySize = 256;
-
 template <size_t N, typename R, typename... Args>
 constexpr void* GetMapedFuncImpl(
-    size_t UniqueId, R (*new_func)(Args...),
+    size_t UniqueId,
     typename std::enable_if_t<N == kMaxLibrarySize, void*>* = nullptr) {
     return nullptr;
 }
 
 template <size_t N, typename R, typename... Args>
-constexpr void* GetMapedFuncImpl(size_t UniqueId, R (*new_func)(Args...),
+constexpr void* GetMapedFuncImpl(size_t UniqueId,
                                  typename std::enable_if_t <
                                      N<kMaxLibrarySize, void*>* = nullptr) {
     if (N == UniqueId) {
-        return reinterpret_cast<void*>(&MapedFunc<N, R, Args...>::func);
+        return reinterpret_cast<void*>(&MapedFunc<void, N, R, Args...>::func);
     }
-    return GetMapedFuncImpl<N + 1>(UniqueId, new_func);
+    return GetMapedFuncImpl<N + 1, R, Args...>(UniqueId);
 }
 
 template <typename R, typename... Args>
-constexpr void* GetMapedFunc(size_t UniqueId, R (*new_func)(Args...)) {
-    return GetMapedFuncImpl<0>(UniqueId, new_func);
+constexpr void* GetMapedFunc(size_t UniqueId) {
+    return GetMapedFuncImpl<0, R, Args...>(UniqueId);
 }
-
-template <char... strs>
-struct CombinString {};
-
-template <size_t N, size_t... idx>
-constexpr auto makeCombinStringImpl(const char (&str)[N], std::index_sequence<idx...>) {
-    return CombinString<str[idx]...>();
-}
-template <size_t N>
-constexpr auto makeCombinString(const char (&str)[N]) {
-    return makeCombinStringImpl(str, std::make_index_sequence<N>());
-}
-
 
 // TODO
 // use func name as template arguments, then generate functions map:
@@ -359,24 +212,44 @@ constexpr auto makeCombinString(const char (&str)[N]) {
 // name1: {func0, func1, func2...}
 // ...
 // reduce the template functions count and then reduce complitation time
-template <typename R, typename... Args>
-class WrapGenerator {
+template <typename StrT, typename R, typename... Args>
+class CompilerWrapGenerator : public WrapGeneratorBase {
    public:
     typedef R (*type)(Args...);
-
-    WrapGenerator() { gen(); }
+    // forbidden construct on stack
+    CompilerWrapGenerator() {
+        gen();
+        HookRuntimeContext::instance().registCompilerGen(this);
+    }
 
     template <size_t... Idxs>
     void gen_impl(std::index_sequence<Idxs...>) {
-        funcs_ = {
-            reinterpret_cast<void*>(&MapedFunc<Idxs, R, Args...>::func)...};
+        funcs_ = {reinterpret_cast<void*>(
+            &MapedFunc<StrT, Idxs, R, Args...>::func)...};
     }
     void gen() { gen_impl(std::make_index_sequence<kMaxLibrarySize>()); }
 
-    void* getFunction(size_t index) const { return funcs_[index]; }
+    void* getFunction(size_t uniqueId,
+                      const char* libName = nullptr) const override {
+        size_t offset =
+            HookRuntimeContext::instance().caclOffset<StrT>(libName, uniqueId);
+        return funcs_[offset];
+    }
+
+    std::string symName() const override { return std::string(StrT()); }
 
    private:
     std::vector<void*> funcs_;
+};
+
+template <typename R, typename... Args>
+class RuntimeWrapGenerator : public WrapGeneratorBase {
+   public:
+    void* getFunction(size_t index, const char* = nullptr) const override {
+        return GetMapedFunc<R, Args...>(index);
+    }
+
+    std::string symName() const override { return ""; }
 };
 
 struct HookFeatureBase {
@@ -389,50 +262,89 @@ struct HookFeatureBase {
           oldFunc(reinterpret_cast<void**>(old_func)),
           filter_(filter) {}
 
+    template <typename R, typename... Args, typename T>
+    HookFeatureBase(const std::string& sym_name, R (*new_func)(Args...),
+                    T** old_func, const std::function<bool(void)>& filter = {})
+        : symName(sym_name),
+          newFunc(reinterpret_cast<void*>(new_func)),
+          oldFunc(reinterpret_cast<void**>(old_func)),
+          filter_(filter) {}
+
     void* getNewFunc(const char* libName = nullptr) { return newFunc; }
 
-    const char* symName;
+    std::string symName;
     void* newFunc;
     void** oldFunc;
     std::function<bool(void)> filter_;
 };
 
+using WrapFuncGenerator = std::function<void*(const char*, const char*, void*)>;
 
+template <typename GenT>
+struct GeneratorFunctor {
+    static void* func(const char* libName, const char* symName, void* newFunc) {
+        HookRuntimeContext::StringPair pair_str(libName, symName);
+        auto iter = HookRuntimeContext::instance().insert(
+            std::make_pair(pair_str, HookRuntimeContext::StatisticPair()));
+        auto uniqueId = HookRuntimeContext::instance().getUniqueId(iter);
+        auto wrapGen = new GenT();
+        auto wrapFunc = wrapGen->getFunction(uniqueId, libName);
+        iter->second.first = wrapFunc;
+        iter->second.second = newFunc;
+        return wrapFunc;
+    }
+};
 
-struct HookFeature : public HookFeatureBase {
+struct SimpleGenerator {
+    template <typename R, typename... Args>
+    struct type {
+        WrapFuncGenerator getGenerator() {
+            return &GeneratorFunctor<RuntimeWrapGenerator<R, Args...>>::func;
+        }
+    };
+};
+
+struct FastGenerator {
+    template <typename StrT, typename R, typename... Args>
+    struct type {
+        WrapFuncGenerator getGenerator() {
+            return &GeneratorFunctor<
+                CompilerWrapGenerator<StrT, R, Args...>>::func;
+        }
+    };
+};
+
+template <typename GeneratorT>
+struct __HookFeature : public HookFeatureBase {
     template <size_t N, typename R, typename... Args, typename T>
-    constexpr HookFeature(const char (&sym_name)[N], R (*new_func)(Args...),
-                          T** old_func,
-                          const std::function<bool(void)>& filter = {})
+    constexpr __HookFeature(const char (&sym_name)[N], R (*new_func)(Args...),
+                            T** old_func,
+                            const std::function<bool(void)>& filter = {})
         : HookFeatureBase(sym_name, new_func, old_func, filter) {
-#if 0
-        WrapGenerator<R, Args...> generator;
-#endif
-        findUniqueFunc = [=](size_t uniqueId) {
-#if 0
-            return generator.getFunction(uniqueId);
-#else
-            return GetMapedFunc(uniqueId, new_func);
-#endif
-        };
+        typename GeneratorT::template type<R, Args...> generator;
+        newFuncGenerator = generator.getGenerator();
+    }
+
+    template <typename StrT, typename R, typename... Args, typename T>
+    __HookFeature(StrT strT, R (*new_func)(Args...), T** old_func,
+                  const std::function<bool(void)>& filter = {})
+        : HookFeatureBase(std::string(strT), new_func, old_func, filter) {
+        typename GeneratorT::template type<StrT, R, Args...> generator;
+        newFuncGenerator = generator.getGenerator();
     }
 
     void* getNewFunc(const char* libName = nullptr) {
-        if (libName) {
-            HookRuntimeContext::StringPair pair_str(libName, symName);
-            auto iter = HookRuntimeContext::instance().insert(
-                std::make_pair(pair_str, HookRuntimeContext::StatisticPair()));
-            auto uniqueId = HookRuntimeContext::instance().getUniqueId(iter);
-            auto wrapFunc = findUniqueFunc(uniqueId);
-            iter->second.first = wrapFunc;
-            iter->second.second = newFunc;
-            return wrapFunc;
+        if (!libName) {
+            return newFunc;
         }
-        return newFunc;
+        return newFuncGenerator(libName, symName.c_str(), newFunc);
     }
 
     std::function<void*(size_t)> findUniqueFunc;
+    WrapFuncGenerator newFuncGenerator;
 };
+
+using HookFeature = __HookFeature<SimpleGenerator>;
 
 template <typename DerivedT>
 struct MemberDetector<DerivedT,
@@ -440,7 +352,7 @@ struct MemberDetector<DerivedT,
     : std::true_type {
     static bool targetSym(DerivedT* self, const char* name) {
         for (auto& sym : static_cast<DerivedT*>(self)->symbols) {
-            if (!strcmp(name, sym.symName)) {
+            if (name == sym.symName) {
                 if (sym.filter_ && !sym.filter_()) {
                     return false;
                 }
@@ -453,8 +365,8 @@ struct MemberDetector<DerivedT,
         auto iter = std::find_if(
             std::begin(static_cast<DerivedT*>(self)->symbols),
             std::end(static_cast<DerivedT*>(self)->symbols), [self](auto& sym) {
-                return !strcmp(static_cast<DerivedT*>(self)->curSymName(),
-                               sym.symName);
+                return static_cast<DerivedT*>(self)->curSymName() ==
+                       sym.symName;
             });
         // TODO: if std::get<2>(*iter) is a pointer and it's point to
         // std::get<1>(*iter) then there will return nullptr

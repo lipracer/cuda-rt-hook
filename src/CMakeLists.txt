@@ -9,7 +9,7 @@ target_link_libraries(cuda_mock_impl PRIVATE fmt::fmt-header-only)
 set_target_properties(cuda_mock_impl
     PROPERTIES
     # LINK_OPTIONS "-static-libstdc++"
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_INSTALL_PREFIX}/cuda_mock
+    LIBRARY_OUTPUT_DIRECTORY ${DST_DIRECTORY_TO_INSTALL}
     BUILD_WITH_INSTALL_RPATH OFF
     BUILD_RPATH "\$ORIGIN"
     INSTALL_RPATH "\$ORIGIN"

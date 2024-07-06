@@ -426,11 +426,6 @@ int retrieve_dyn_lib(struct dl_phdr_info* info, size_t info_size, void* table) {
 
 namespace hook {
 
-HookRuntimeContext& HookRuntimeContext::instance() {
-    static HookRuntimeContext __instance;
-    return __instance;
-}
-
 std::unordered_map<void*, void*> function_map;
 
 // std::unordered_map<std::string, std::vector<void*>>

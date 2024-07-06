@@ -12,11 +12,13 @@
 find_package(PythonLibs REQUIRED)
 
 add_library(cuda_mock STATIC
+    env_util.cpp
     GlobalVarMgr.cpp
     logger.cpp
     env_mgr.cpp
     backtrace.cpp
     statistic.cpp
+    hook_context.cpp
     hook.cpp
     cuda_op_tracer.cpp
     cuda_mock.cpp
@@ -27,7 +29,7 @@ add_library(xpu_mock_improve SHARED hooks/print_hook.cpp)
 target_include_directories(xpu_mock_improve PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}../include)
 set_target_properties(xpu_mock_improve
     PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_INSTALL_PREFIX}/cuda_mock
+    LIBRARY_OUTPUT_DIRECTORY ${DST_DIRECTORY_TO_INSTALL}
 )
 
 if (NOT PUBLISH_BUILD)
@@ -50,12 +52,14 @@ include_directories(PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/fmt/inclu
 
 
 # add_library(plthook STATIC
+#     env_util.cpp
 #     GlobalVarMgr.cpp
 #     cuda_mock.cpp
 #     hook.cpp
 #     cuda_op_tracer.cpp
 #     backtrace.cpp
 #     statistic.cpp
+#     hook_context.cpp
 #     env_mgr.cpp
 # )
 # 

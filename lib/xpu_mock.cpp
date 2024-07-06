@@ -20,6 +20,19 @@
 #include "statistic.h"
 #include "support.h"
 
+// NB: don't use same name with original function, this will result in the
+// replacement not taking effect
+
+#define DEF_FUNCTION_INT(name, ...)       \
+    typedef int (*name##_t)(__VA_ARGS__); \
+    name##_t origin_##name = nullptr;     \
+    int name(__VA_ARGS__)
+
+#define DEF_FUNCTION_VOID(name, ...)      \
+    typedef int (*name##_t)(__VA_ARGS__); \
+    name##_t origin_##name = nullptr;     \
+    void name(__VA_ARGS__)
+
 namespace {
 
 //-------------------------- xpu api --------------------------//
