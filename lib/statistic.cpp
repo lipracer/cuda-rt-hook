@@ -1,5 +1,6 @@
 #include "statistic.h"
 
+#include <iomanip>
 #include <map>
 #include <sstream>
 
@@ -8,8 +9,27 @@
 
 namespace hook {
 
+namespace {
+
+std::string prettyFormatSize(size_t bytes) {
+    const char* sizes[] = {"B", "KB", "MB", "GB"};
+    size_t order = 0;
+    double size = static_cast<double>(bytes);
+
+    while (size >= 1024 && order < sizeof(sizes) / sizeof(sizes[0]) - 1) {
+        order++;
+        size /= 1024;
+    }
+
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(2) << size << " " << sizes[order];
+    return out.str();
+}
+
+}  // namespace
+
 std::string shortLibName(const std::string& full_lib_name) {
-#if 0
+#if 1
     auto pos = full_lib_name.find_last_of('/');
     if (pos != std::string::npos) {
         return full_lib_name.substr(pos + 1);
@@ -20,7 +40,7 @@ std::string shortLibName(const std::string& full_lib_name) {
 
 std::ostream& operator<<(std::ostream& os,
                          const MemoryStatisticCollection::PtrIdentity& id) {
-    os << "id(" << shortLibName(id.lib) << ",devId:" << id.devId
+    os << "id(" << id.lib << "),devId:" << id.devId
        << ",kind:" << id.kind << ")";
     return os;
 }
@@ -63,17 +83,23 @@ MemoryStatisticCollection& MemoryStatisticCollection::instance() {
 void MemoryStatisticCollection::record_alloc(const std::string& libName,
                                              size_t devId, void* ptr,
                                              size_t size, int kind) {
-    MLOG(PROFILE, INFO) << "[" << libName << "][ALLOC] devId: " << devId
-                        << ", ptr: " << ptr << ", size: " << size;
     kind_map_.insert(
         std::make_pair(KindDevPtr{.devId = devId, .ptr = ptr}, kind));
-    statistics_[PtrIdentity(libName, devId, kind)].record_alloc(ptr, size);
+    auto& statistic = statistics_[PtrIdentity(libName, devId, kind)];
+    statistic.record_alloc(ptr, size);
+
+    MLOG(MEMORY, INFO) << "[" << shortLibName(libName)
+                       << "][ALLOC] devId: " << devId << ", ptr: " << ptr
+                       << ", size: " << prettyFormatSize(statistic.total_size())
+                       << ", kind: " << kind << ", allocated: "
+                       << prettyFormatSize(statistic.total_size())
+                       << ", peak: " << prettyFormatSize(statistic.peak_size());
 }
 
 void MemoryStatisticCollection::record_free(const std::string& libName,
                                             size_t devId, void* ptr, int kind) {
-    MLOG(PROFILE, INFO) << "[" << libName << "][FREE] devId: " << devId
-                        << ", ptr: " << ptr;
+    MLOG(MEMORY, INFO) << "[" << shortLibName(libName)
+                       << "][FREE] devId: " << devId << ", ptr: " << ptr;
     statistics_[PtrIdentity(libName, devId, kind)].record_free(ptr);
 }
 

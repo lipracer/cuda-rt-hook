@@ -63,11 +63,10 @@ std::string HookRuntimeContext::summary_string() {
                 std::tuple<size_t, size_t>(func_info.second.count(),
                                            func_info.second.cost())));
         }
-        auto iter =
-            statistic_map
-                .insert(std::make_pair(shortLibName(func_info.first.lib_name),
-                                       std::stringstream()))
-                .first;
+        auto iter = statistic_map
+                        .insert(std::make_pair(func_info.first.lib_name,
+                                               std::stringstream()))
+                        .first;
         iter->second << func_info.first.sym_name
                      << alignWith(func_info.first.sym_name) << func_info.second
                      << "\n";
