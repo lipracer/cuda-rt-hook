@@ -68,7 +68,6 @@ struct MemberDetector : std::false_type {
     }
 };
 
-
 template <size_t N>
 constexpr size_t hash(const char (&str)[N]) {
     size_t v = 0;
@@ -187,14 +186,15 @@ struct MapedFunc<void, UniqueId, void, Args...> {
 template <size_t N, typename R, typename... Args>
 constexpr void* GetMapedFuncImpl(
     size_t UniqueId,
-    typename std::enable_if_t<N == kMaxLibrarySize, void*>* = nullptr) {
+    typename std::enable_if_t<N == kMaxEachSignatureFuncSize, void*>* =
+        nullptr) {
     return nullptr;
 }
 
 template <size_t N, typename R, typename... Args>
-constexpr void* GetMapedFuncImpl(size_t UniqueId,
-                                 typename std::enable_if_t <
-                                     N<kMaxLibrarySize, void*>* = nullptr) {
+constexpr void* GetMapedFuncImpl(
+    size_t UniqueId, typename std::enable_if_t <
+                         N<kMaxEachSignatureFuncSize, void*>* = nullptr) {
     if (N == UniqueId) {
         return reinterpret_cast<void*>(&MapedFunc<void, N, R, Args...>::func);
     }
@@ -233,6 +233,7 @@ class CompilerWrapGenerator : public WrapGeneratorBase {
                       const char* libName = nullptr) const override {
         size_t offset =
             HookRuntimeContext::instance().caclOffset<StrT>(libName, uniqueId);
+        CHECK_LT(offset, kMaxLibrarySize);
         return funcs_[offset];
     }
 
@@ -255,8 +256,8 @@ class RuntimeWrapGenerator : public WrapGeneratorBase {
 struct HookFeatureBase {
     template <size_t N, typename R, typename... Args, typename T>
     constexpr HookFeatureBase(const char (&sym_name)[N], R (*new_func)(Args...),
-                          T** old_func,
-                          const std::function<bool(void)>& filter = {})
+                              T** old_func,
+                              const std::function<bool(void)>& filter = {})
         : symName(sym_name),
           newFunc(reinterpret_cast<void*>(new_func)),
           oldFunc(reinterpret_cast<void**>(old_func)),
@@ -345,6 +346,7 @@ struct __HookFeature : public HookFeatureBase {
 };
 
 using HookFeature = __HookFeature<SimpleGenerator>;
+using FHookFeature = __HookFeature<FastGenerator>;
 
 template <typename DerivedT>
 struct MemberDetector<DerivedT,
