@@ -18,6 +18,9 @@ class MemoryStatistic {
         bool operator<(const DevPtr& other) const { return ptr_ < other.ptr_; }
     };
 
+    size_t total_size() const { return total_size_; }
+    size_t peak_size() const { return peak_size_; }
+
     void record_alloc(void* ptr, size_t size);
     void record_free(void* ptr);
 

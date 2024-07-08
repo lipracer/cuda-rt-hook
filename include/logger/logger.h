@@ -28,19 +28,20 @@
 
 namespace logger {
 enum class LogLevel { info = 0, warning, error, fatal, last };
-enum class LogModule { profile, trace, hook, python, debug, last };
+enum class LogModule { profile, trace, hook, python, memory, debug, last };
 
 #define PROFILE logger::LogModule::profile
 #define TRACE logger::LogModule::trace
 #define HOOK logger::LogModule::hook
 #define PYTHON logger::LogModule::python
+#define MEMORY logger::LogModule::memory
 #define DEBUG logger::LogModule::debug
 
 class LogModuleHelper {
    public:
     static auto& enum_strs() {
-        static std::array<const char*, 5> strs = {"PROFILE", "TRACE", "HOOK",
-                                                  "PYTHON", "LAST"};
+        static std::array<const char*, 6> strs = {"PROFILE", "TRACE", "HOOK",
+                                                  "PYTHON", "MEMORY", "LAST"};
         return strs;
     }
     static auto begin() { return enum_strs().begin(); }

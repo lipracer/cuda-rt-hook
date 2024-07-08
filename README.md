@@ -75,7 +75,17 @@ LOG_LEVEL=WARN python run.py
 
 ![memory_peaks](docs/imgs/example/memory_peaks.jpg)
 
-### 功能4: 打印Runtime接口的耗时
+### 功能4：显示每次内存分配的信息
+
+```bash
+LOG_LEVEL=MEMORY=INFO python run.py
+```
+
+在程序运行过程中会显示:
+
+![memory_allocation](docs/imgs/example/memory_allocation.jpg)
+
+### 功能5: 打印Runtime接口的耗时
 
 ```bash 
 LOG_SYNC_MODE=1 LOG_LEVEL=PROFILE=INFO python run.py
@@ -85,7 +95,7 @@ LOG_SYNC_MODE=1 LOG_LEVEL=PROFILE=INFO python run.py
 
 ![time_statistic](docs/imgs/example/time_statistic.jpg)
 
-### 功能5：打印Runtime的参数
+### 功能6：打印Runtime的参数
 
 ```bash
 HOOK_ENABLE_TRACE=xpu_malloc=0b10 python run.py
@@ -96,7 +106,7 @@ HOOK_ENABLE_TRACE=xpu_malloc=0x2 python run.py
 
 ![print_args](docs/imgs/example/print_args.jpg)
 
-### 功能6: 收集CUDA算子调用堆栈
+### 功能7: 收集CUDA算子调用堆栈
 - 找到nvcc安装路径
 `which nvcc`  
 - 用我们的nvcc替换系统的nvcc（我们只是在编译选项加了`-g`）  
@@ -122,7 +132,7 @@ HOOK_ENABLE_TRACE=xpu_malloc=0x2 python run.py
 - **用法示例**: `export LOG_LEVEL=WARN,TRACE=INFO`
 - **可选值**: 
   - 日志级别: INFO, WARN, ERROR, FATAL
-  - 日志模块: PROFILE, TRACE, HOOK, PYTHON
+  - 日志模块: PROFILE, TRACE, HOOK, PYTHON, MEMORY
 - **默认值**: 
   - 全局日志级别: WARN
   - 各个日志模块的默认日志级别: WARN
