@@ -35,6 +35,7 @@ static constexpr size_t kMaxEachSignatureFuncSize = 256;
 class WrapGeneratorBase {
    public:
     WrapGeneratorBase() {}
+    virtual ~WrapGeneratorBase() {}
     virtual std::string symName() const = 0;
     virtual void* getFunction(size_t index,
                               const char* libName = nullptr) const = 0;

@@ -81,7 +81,7 @@ std::string HookRuntimeContext::summary_string() {
     for (const auto& it : statistic_map) {
         ss << "library name:" << it.first << "\n" << it.second.str() << "\n";
     }
-    return std::move(ss.str());
+    return ss.str();
 }
 
 std::ostream& operator<<(std::ostream& os,
