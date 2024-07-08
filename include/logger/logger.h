@@ -167,7 +167,7 @@ static constexpr size_t constexpr_strlen(const char (&)[M]) {
 }
 
 #define STR_TO_TYPE(str)                                     \
-    []() -> auto{                                            \
+    []() -> auto {                                           \
         static constexpr const char ls[] = str;              \
         constexpr size_t N = ::logger::constexpr_strlen(ls); \
         return ::logger::TypeStrGenerator<N, ls>::type();    \
