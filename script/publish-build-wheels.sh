@@ -54,6 +54,7 @@ for whl in /io/tmp_dist/*.whl; do
 done
 
 rm -rf /io/tmp_dist
+rm -rf /io/dist/*.tar.gz
 
 # python setup.py sdist bdist_wheel
 

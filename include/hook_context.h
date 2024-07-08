@@ -29,7 +29,8 @@ inline std::string alignWith(T&& t, size_t size = 32) {
     return alignWith(std::to_string(std::forward<T>(t)), size);
 }
 
-static constexpr size_t kMaxLibrarySize = 256;
+static constexpr size_t kMaxLibrarySize = 64;
+static constexpr size_t kMaxEachSignatureFuncSize = 256;
 
 class WrapGeneratorBase {
    public:

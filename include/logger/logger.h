@@ -40,7 +40,7 @@ class LogModuleHelper {
    public:
     static auto& enum_strs() {
         static std::array<const char*, 5> strs = {"PROFILE", "TRACE", "HOOK",
-                                                         "PYTHON", "LAST"};
+                                                  "PYTHON", "LAST"};
         return strs;
     }
     static auto begin() { return enum_strs().begin(); }
@@ -356,7 +356,6 @@ struct MLogWrapper : public LogWrapper {
     explicit MLogWrapper(const char* module, LogLevel level, const char* str)
         : LogWrapper(level, str), module_(module) {}
 
-
     const char* module_;
 };
 
@@ -552,19 +551,19 @@ static constexpr char __MLOGGER_HEADER__[] = "[{}][{}:{}]";
 
 #define CHECK_LT(l, r, ...)          \
     INTERNAL_CHECK_IMPL(((l) < (r)), \
-                        fmt::format("expect lhs:{} < rhs:{}", l, r))
+                        fmt::format("expect " #l ":{} < " #r ":{}", l, r))
 #define CHECK_LE(l, r, ...)           \
     INTERNAL_CHECK_IMPL(((l) <= (r)), \
-                        fmt::format("expect lhs:{} <= rhs:{}", l, r))
+                        fmt::format("expect " #l ":{} <= " #r ":{}", l, r))
 #define CHECK_GT(l, r, ...)          \
     INTERNAL_CHECK_IMPL(((l) > (r)), \
-                        fmt::format("expect lhs:{} > rhs:{}", l, r))
+                        fmt::format("expect " #l ":{} > " #r ":{}", l, r))
 #define CHECK_GE(l, r, ...)           \
     INTERNAL_CHECK_IMPL(((l) >= (r)), \
-                        fmt::format("expect lhs:{} >= rhs:{}", l, r))
+                        fmt::format("expect " #l ":{} >= " #r ":{}", l, r))
 #define CHECK_EQ(l, r, ...)           \
     INTERNAL_CHECK_IMPL(((l) == (r)), \
-                        fmt::format("expect lhs:{} == rhs:{}", l, r))
+                        fmt::format("expect " #l ":{} == " #r ":{}", l, r))
 
 #define be_unreachable(...) INTERNAL_CHECK_IMPL(false, __VA_ARGS__)
 

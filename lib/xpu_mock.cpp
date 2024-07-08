@@ -23,42 +23,24 @@
 // NB: don't use same name with original function, this will result in the
 // replacement not taking effect
 
-#define DEF_FUNCTION_INT(name, ...)       \
-    typedef int (*name##_t)(__VA_ARGS__); \
-    name##_t origin_##name = nullptr;     \
-    int name(__VA_ARGS__)
+#define DEF_FUNCTION_IMPL(name, RetT, ...) \
+    typedef RetT (*name##_t)(__VA_ARGS__); \
+    name##_t origin_##name = nullptr;      \
+    RetT name(__VA_ARGS__)
 
-#define DEF_FUNCTION_VOID(name, ...)      \
-    typedef int (*name##_t)(__VA_ARGS__); \
-    name##_t origin_##name = nullptr;     \
-    void name(__VA_ARGS__)
+#define DEF_FUNCTION_INT(name, ...) DEF_FUNCTION_IMPL(name, int, __VA_ARGS__)
+
+#define DEF_FUNCTION_VOID(name, ...) DEF_FUNCTION_IMPL(name, void, __VA_ARGS__)
 
 namespace {
 
 //-------------------------- xpu api --------------------------//
 
-typedef int (*xpu_malloc_t)(void** pdevptr, uint64_t size, int kind);
-typedef int (*xpu_free_t)(void* devptr);
-typedef int (*xpu_wait_t)(void* stream);
-typedef int (*xpu_memcpy_t)(void* dst, const void* src, uint64_t size,
-                            int kind);
-typedef int (*xpu_set_device_t)(int devid);
-typedef int (*xpu_current_device_t)(int* devid);
-typedef int (*xpu_launch_async_t)(void*);
-typedef int (*xpu_stream_create_t)(void** pstream);
-typedef int (*xpu_stream_destroy_t)(void* stream);
+DEF_FUNCTION_INT(xpu_current_device, int* devid) {
+    return origin_xpu_current_device(devid);
+}
 
-xpu_malloc_t origin_xpu_malloc = nullptr;
-xpu_free_t origin_xpu_free = nullptr;
-xpu_wait_t origin_xpu_wait = nullptr;
-xpu_memcpy_t origin_xpu_memcpy = nullptr;
-xpu_set_device_t origin_xpu_set_device = nullptr;
-xpu_current_device_t origin_xpu_current_device = nullptr;
-xpu_launch_async_t origin_xpu_launch_async = nullptr;
-xpu_stream_create_t origin_xpu_stream_create = nullptr;
-xpu_stream_destroy_t origin_xpu_stream_destroy = nullptr;
-
-int xpu_malloc(void** pdevptr, uint64_t size, int kind) {
+DEF_FUNCTION_INT(xpu_malloc, void** pdevptr, uint64_t size, int kind) {
     int r = 0;
     int devId = 0;
 
@@ -84,7 +66,7 @@ int xpu_malloc(void** pdevptr, uint64_t size, int kind) {
     return r;
 }
 
-int xpu_free(void* devptr) {
+DEF_FUNCTION_INT(xpu_free, void* devptr) {
     int r = 0;
     int devId = 0;
 
@@ -104,70 +86,53 @@ int xpu_free(void* devptr) {
     return r;
 }
 
-int xpu_wait(void* stream) {
-    return origin_xpu_wait(stream);
-}
+DEF_FUNCTION_INT(xpu_wait, void* stream) { return origin_xpu_wait(stream); }
 
-int xpu_memcpy(void* dst, const void* src, uint64_t size, int kind) {
+DEF_FUNCTION_INT(xpu_memcpy, void* dst, const void* src, uint64_t size,
+                 int kind) {
     return origin_xpu_memcpy(dst, src, size, kind);
 }
 
-int xpu_set_device(int devid) {
+DEF_FUNCTION_INT(xpu_set_device, int devid) {
     return origin_xpu_set_device(devid);
 }
 
-int xpu_current_device(int* devid) {
-    return origin_xpu_current_device(devid);
-}
-
-int xpu_launch_async(void* func) {
+DEF_FUNCTION_INT(xpu_launch_async, void* func) {
     // TODO: get symbol name from symbol table
     return origin_xpu_launch_async(func);
 }
 
-int xpu_stream_create(void** pstream) {
+DEF_FUNCTION_INT(xpu_stream_create, void** pstream) {
     return origin_xpu_stream_create(pstream);
 }
 
-int xpu_stream_destroy(void* stream) {
+DEF_FUNCTION_INT(xpu_stream_destroy, void* stream) {
     return origin_xpu_stream_destroy(stream);
 }
 
 //-------------------------- cuda api --------------------------//
 
-typedef int (*CudaMalloc_t)(void** devPtr, size_t size);
-typedef int (*CudaFree_t)(void* devPtr);
-typedef int (*CudaMemcpy_t)(void* dst, const void* src, size_t count, int kind);
-typedef int (*CudaSetDevice_t)(int);
-typedef int (*CudaGetDevice_t)(int*);
-
-CudaMalloc_t origin_cudaMalloc = nullptr;
-CudaFree_t origin_cudaFree = nullptr;
-CudaMemcpy_t origin_cudaMemcpy = nullptr;
-CudaSetDevice_t origin_cudaSetDevice = nullptr;
-CudaGetDevice_t origin_cudaGetDevice = nullptr;
-
-int cudaMalloc(void** devPtr, size_t size) {
+DEF_FUNCTION_INT(cudaMalloc, void** devPtr, size_t size) {
     return origin_cudaMalloc(devPtr, size);
 }
 
-int cudaFree(void* devPtr) {
-    return origin_cudaFree(devPtr);
-}
+DEF_FUNCTION_INT(cudaFree, void* devPtr) { return origin_cudaFree(devPtr); }
 
-int cudaMemcpy(void* dst, const void* src, size_t count, int kind) {
+DEF_FUNCTION_INT(cudaMemcpy, void* dst, const void* src, size_t count,
+                 int kind) {
     return origin_cudaMemcpy(dst, src, count, kind);
 }
 
-int cudaSetDevice(int device) {
+DEF_FUNCTION_INT(cudaSetDevice, int device) {
     return origin_cudaSetDevice(device);
 }
 
-int cudaGetDevice(int* device) {
+DEF_FUNCTION_INT(cudaGetDevice, int* device) {
     return origin_cudaGetDevice(device);
 }
 
-#define BUILD_FEATURE(name) hook::HookFeature(#name, &name, &origin_##name)
+#define BUILD_FEATURE(name) \
+    hook::FHookFeature(STR_TO_TYPE(#name), &name, &origin_##name)
 
 class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
    public:
@@ -176,21 +141,15 @@ class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
                !adt::StringRef(name).contain("libcudart.so");
     }
 
-    hook::HookFeature symbols[14] = {
-        BUILD_FEATURE(xpu_malloc),
-        BUILD_FEATURE(xpu_free),
-        BUILD_FEATURE(xpu_current_device),
-        BUILD_FEATURE(xpu_set_device),
-        BUILD_FEATURE(xpu_wait),
-        BUILD_FEATURE(xpu_memcpy),
-        BUILD_FEATURE(xpu_launch_async),
-        BUILD_FEATURE(xpu_stream_create),
+    hook::FHookFeature symbols[14] = {
+        BUILD_FEATURE(xpu_malloc),         BUILD_FEATURE(xpu_free),
+        BUILD_FEATURE(xpu_current_device), BUILD_FEATURE(xpu_set_device),
+        BUILD_FEATURE(xpu_wait),           BUILD_FEATURE(xpu_memcpy),
+        BUILD_FEATURE(xpu_launch_async),   BUILD_FEATURE(xpu_stream_create),
         BUILD_FEATURE(xpu_stream_destroy),
 
-        BUILD_FEATURE(cudaMalloc),
-        BUILD_FEATURE(cudaFree),
-        BUILD_FEATURE(cudaMemcpy),
-        BUILD_FEATURE(cudaSetDevice),
+        BUILD_FEATURE(cudaMalloc),         BUILD_FEATURE(cudaFree),
+        BUILD_FEATURE(cudaMemcpy),         BUILD_FEATURE(cudaSetDevice),
         BUILD_FEATURE(cudaGetDevice),
     };
 
