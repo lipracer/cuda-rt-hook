@@ -17,9 +17,8 @@
 #include "backtrace.h"
 #include "hook_context.h"
 #include "logger/logger.h"
+#include "macro.h"
 #include "support.h"
-
-#define HOOK_API __attribute__((__visibility__("default")))
 
 namespace hook {
 /**

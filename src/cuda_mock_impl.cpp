@@ -216,6 +216,7 @@ HOOK_API HookString_t py_build_version_str() {
 }
 HOOK_API int py_build_version_int() { return get_build_python_int_version(); }
 
+HOOK_API void any_hook_install() { dh_any_hook_install(); }
 }
 // namespace py = pybind11;
 

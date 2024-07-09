@@ -43,6 +43,9 @@ def get_build_version_int():
 def patch_runtime():
     return cuda_mock_impl.patch_runtime()
 
+def test_any_hook():
+    return cuda_mock_impl.dh_any_hook_install()
+
 def log(*args, level=0):
     caller_frame = inspect.currentframe().f_back
     caller_filename = inspect.getframeinfo(caller_frame).filename

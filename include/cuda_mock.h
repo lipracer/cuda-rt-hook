@@ -2,6 +2,8 @@
 
 #include <functional>
 
+#include "macro.h"
+
 #ifdef __cplusplus
 
 extern "C" {
@@ -50,5 +52,6 @@ int get_build_python_int_version();
 }
 
 void install_triton_hook();
+void dh_any_hook_install();
 
 #endif
