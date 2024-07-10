@@ -21,7 +21,7 @@ class dynamic_obj:
         else:
             self.code = file
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.compile_opts = [f'-I{script_dir}/include', '-lcuda_mock_impl', f'-L{script_dir}', f'-Wl,-rpath,{script_dir}']
+        self.compile_opts = ['-std=c++17', f'-I{script_dir}/include', '-lcuda_mock_impl', f'-L{script_dir}', f'-Wl,-rpath,{script_dir}']
     def compile(self):
         if not self.check_env():
             raise Exception("can't find host compiler!")
@@ -30,7 +30,7 @@ class dynamic_obj:
         current_time = str(current_time).replace(':', '_')
         current_time = str(current_time).replace(' ', '_')
         current_time = str(current_time).replace('.', '_')
-        
+
         file_name = f'__cuda_rt_hook__{current_time}'
         cpp_file_name = f'/tmp/{file_name}.cpp'
 
@@ -52,7 +52,7 @@ class dynamic_obj:
             self.compiler = CLANG_CXX_COMPILER
             return True
         return False
-        
+
     def get_compiler(self, name):
         result = exec_shell(f'which {name}').strip()
         if 0 == len(result):
@@ -64,7 +64,7 @@ class dynamic_obj:
     def appen_compile_opts(self, *args):
         self.compile_opts.extend(list(args))
         return self
-    
+
     def get_lib(self):
         return self.lib_file_name
 
