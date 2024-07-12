@@ -48,7 +48,6 @@ void dh_create_py_hook_installer(
 // for runtime check python version build vs runtime
 const char* get_build_python_string_version();
 int get_build_python_int_version();
-
 }
 
 void install_triton_hook();

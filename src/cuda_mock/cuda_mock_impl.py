@@ -44,7 +44,7 @@ def patch_runtime():
     return cuda_mock_impl.patch_runtime()
 
 def test_any_hook():
-    return cuda_mock_impl.dh_any_hook_install()
+    return cuda_mock_impl.any_hook_install()
 
 def log(*args, level=0):
     caller_frame = inspect.currentframe().f_back

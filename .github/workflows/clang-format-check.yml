@@ -19,11 +19,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
+      - name: Fetch sources
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
-    - name: Install clang-format
-      run: sudo apt-get install -y clang-format
+      - name: Checkout through merge base
+        uses: rmacklin/fetch-through-merge-base@v0
+        with:
+          base_ref: ${{ github.event.pull_request.base.ref }}
+          head_ref: ${{ github.event.pull_request.head.sha }}
+          deepen_length: 500
 
-    - name: Run clang-format
-      run: bash script/format-check.sh
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v39
+        with:
+          separator: ","
+          skip_initial_fetch: true
+      - name: "Listed files"
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+        run: |
+          echo "Formatting files:"
+          echo "$CHANGED_FILES"
+
+      - name: Install clang-format
+        uses: aminya/setup-cpp@v1
+        with:
+          clangformat: 18.1.7
+
+      - name: Run clang-format
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+          START_REV: ${{ github.event.pull_request.base.sha }}
+          END_REV: ${{ github.event.pull_request.head.sha }}
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+        run: |
+          echo "Changed C++ files: $CHANGED_FILES"
+
+          # Check format for each changed file
+          python -c "import sys;[print(file) for file in filter(lambda x:(x.endswith('h') or x.endswith('h') or x.endswith('hpp') or x.endswith('hxx') or x.endswith('c') or x.endswith('cxx') or x.endswith('cpp')), sys.argv[1].split(','))]" $CHANGED_FILES | xargs -I {} clang-format -i {}
+
+      - name: Check for unformatted code
+        run: |
+          # Check if any files were changed by clang-format
+          if [[ $(git status --porcelain) ]]; then
+            echo "The following files are not formatted correctly:"
+            git diff --name-only
+            exit 1
+          else
+            echo "All files are formatted correctly."
+          fi
