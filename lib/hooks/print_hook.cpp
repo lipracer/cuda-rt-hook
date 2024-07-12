@@ -1,22 +1,22 @@
+#include "print_hook.h"
+
 #include <cstdarg>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "hook.h"
 #include "logger/StringRef.h"
 #include "logger/logger.h"
-#include "print_hook.h"
 
-#define __internal_printf()                       \
-    va_list args;                                 \
-    constexpr size_t kMax = 4096;                 \
-    char buf[kMax] = {0};                         \
-    va_start(args, fmt);                          \
-    vsprintf(buf, fmt, args);                     \
-    va_end(args);                                 \
+#define __internal_printf()                                         \
+    va_list args;                                                   \
+    constexpr size_t kMax = 4096;                                   \
+    char buf[kMax] = {0};                                           \
+    va_start(args, fmt);                                            \
+    vsprintf(buf, fmt, args);                                       \
+    va_end(args);                                                   \
     XpuRuntimePrintfHook::instance()->save_to_internel_buffer(buf); \
     MLOG(PROFILE, WARN) << buf;
-
 
 static int builtin_printf_chk(int flag, const char* fmt, ...) {
     __internal_printf();
@@ -59,8 +59,8 @@ void* XpuRuntimePrintfHook::newFuncPtr(const hook::OriginalInfo& info) {
     } else if (adt::StringRef("printf") == curSymName()) {
         return reinterpret_cast<void*>(&builtin_printf);
     } else if (adt::StringRef("fprintf") == curSymName() ||
-                adt::StringRef("__fprintf") == curSymName() ||
-                adt::StringRef("vfprintf") == curSymName()) {
+               adt::StringRef("__fprintf") == curSymName() ||
+               adt::StringRef("vfprintf") == curSymName()) {
         return reinterpret_cast<void*>(&builtin_fprintf);
     }
     return nullptr;
@@ -73,14 +73,11 @@ std::string XpuRuntimePrintfHook::end_capture() {
     return str;
 }
 
-
-
-
-void __print_hook_initialize(std::vector<adt::StringRef> &target_libs, std::vector<adt::StringRef> &target_symbols){
+void __print_hook_initialize(std::vector<adt::StringRef>& target_libs,
+                             std::vector<adt::StringRef>& target_symbols) {
     XpuRuntimePrintfHook::instance()->setTargetLibs(target_libs);
     XpuRuntimePrintfHook::instance()->setTargetSymbols(target_symbols);
-    XpuRuntimePrintfHook::instance()->install(); //replace plt table
-    
+    XpuRuntimePrintfHook::instance()->install();  // replace plt table
 }
 
 void __print_hook_start_capture() {
