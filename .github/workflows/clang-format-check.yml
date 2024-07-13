@@ -2,13 +2,7 @@ name: Clang Format Check
 
 on:
   pull_request:
-    paths:
-      - '**/*.cpp'
-      - '**/*.h'
-      - '**/*.hpp'
-  push:
-    branches:
-      - main
+    types: [opened, synchronize, reopened]
     paths:
       - '**/*.cpp'
       - '**/*.h'
