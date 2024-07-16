@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "backtrace.h"
+#include "elf_parser.h"
 #include "hook.h"
 #include "hooks/print_hook.h"
 #include "logger/StringRef.h"
@@ -94,8 +95,12 @@ DEF_FUNCTION_INT(xpu_set_device, int devid) {
 }
 
 DEF_FUNCTION_INT(xpu_launch_async, void* func) {
-    // TODO: get symbol name from symbol table
     return origin_xpu_launch_async(func);
+}
+
+std::string launch_args_parser(void* func) {
+    auto libName = hook::HookRuntimeContext::instance().curLibName();
+    return hook::getSymbolTable(libName)->lookUpSymbol(func);
 }
 
 DEF_FUNCTION_INT(xpu_stream_create, void** pstream) {
@@ -163,8 +168,11 @@ DEF_FUNCTION_INT(cudaMemcpy, void* dst, const void* src, size_t count,
     return origin_cudaMemcpy(dst, src, count, kind);
 }
 
-#define BUILD_FEATURE(name) \
-    hook::FHookFeature(STR_TO_TYPE(#name), &name, &origin_##name)
+/// need gcc version > 9.0
+/// #define BUILD_FEATURE(name) hook::FHookFeature(STR_TO_TYPE(#name), &name,
+/// &origin_##name)
+
+#define BUILD_FEATURE(name) hook::HookFeature(#name, &name, &origin_##name)
 
 class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
    public:
@@ -173,19 +181,31 @@ class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
                !adt::StringRef(name).contain("libcudart.so");
     }
 
-    hook::FHookFeature symbols[14] = {
-        BUILD_FEATURE(xpu_malloc),         BUILD_FEATURE(xpu_free),
-        BUILD_FEATURE(xpu_current_device), BUILD_FEATURE(xpu_set_device),
-        BUILD_FEATURE(xpu_wait),           BUILD_FEATURE(xpu_memcpy),
-        BUILD_FEATURE(xpu_launch_async),   BUILD_FEATURE(xpu_stream_create),
+    // need gcc version > 9.0
+    // hook::FHookFeature symbols[14] = {
+    hook::HookFeature symbols[14] = {
+        BUILD_FEATURE(xpu_malloc),
+        BUILD_FEATURE(xpu_free),
+        BUILD_FEATURE(xpu_current_device),
+        BUILD_FEATURE(xpu_set_device),
+        BUILD_FEATURE(xpu_wait),
+        BUILD_FEATURE(xpu_memcpy),
+        BUILD_FEATURE(xpu_launch_async)
+            .setGetNewCallback([](const hook::OriginalInfo& info) {
+                hook::createSymbolTable(info.libName, info.baseHeadPtr);
+            })
+            .setArgsParser(&launch_args_parser),
+        BUILD_FEATURE(xpu_stream_create),
         BUILD_FEATURE(xpu_stream_destroy),
 
-        BUILD_FEATURE(cudaMalloc),         BUILD_FEATURE(cudaFree),
-        BUILD_FEATURE(cudaMemcpy),         BUILD_FEATURE(cudaSetDevice),
+        BUILD_FEATURE(cudaMalloc),
+        BUILD_FEATURE(cudaFree),
+        BUILD_FEATURE(cudaMemcpy),
+        BUILD_FEATURE(cudaSetDevice),
         BUILD_FEATURE(cudaGetDevice),
     };
 
-    void onSuccess() { LOG(WARN) << "install " << curSymName() << " success"; }
+    void onSuccess() { LOG(INFO) << "install " << curSymName() << " success"; }
 };
 
 struct PatchRuntimeHook : public hook::HookInstallerWrap<PatchRuntimeHook> {

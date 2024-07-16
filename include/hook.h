@@ -29,6 +29,7 @@ void install_hook();
 struct OriginalInfo {
     const char* libName = nullptr;
     const void* basePtr = nullptr;
+    const void* baseHeadPtr = nullptr;
     void* relaPtr = nullptr;
     void* oldFuncPtr = nullptr;
     void** pltTablePtr = nullptr;
@@ -40,6 +41,7 @@ struct OriginalInfo {
         relaPtr = info.relaPtr;
         oldFuncPtr = info.oldFuncPtr;
         pltTablePtr = info.pltTablePtr;
+        baseHeadPtr = info.baseHeadPtr;
         return *this;
     }
 };
@@ -120,20 +122,27 @@ std::string args_to_string(Args... args) {
     return ss.str();
 }
 
-#define IF_ENABLE_LOG_TRACE_AND_ARGS(func)                                    \
-    do {                                                                      \
-        int ctrl = enable_log_backtrace(func);                                \
-        if (ctrl) {                                                           \
-            if (ctrl & 0b10) {                                                \
-                MLOG(TRACE, WARN) << func << ": " << args_to_string(args...); \
-            }                                                                 \
-            if (ctrl & 0b01) {                                                \
-                trace::CallFrames callFrames;                                 \
-                callFrames.CollectNative();                                   \
-                callFrames.CollectPython();                                   \
-                MLOG(TRACE, WARN) << func << " with frame:\n" << callFrames;  \
-            }                                                                 \
-        }                                                                     \
+#define IF_ENABLE_LOG_TRACE_AND_ARGS(func)                                   \
+    do {                                                                     \
+        int ctrl = enable_log_backtrace((func));                             \
+        if (ctrl) {                                                          \
+            if (ctrl & 0b10) {                                               \
+                auto parser_func =                                           \
+                    HookRuntimeContext::instance().lookUpArgsParser((func)); \
+                MLOG(TRACE, WARN)                                            \
+                    << func << ": "                                          \
+                    << (parser_func                                          \
+                            ? reinterpret_cast<std::string (*)(Args...)>(    \
+                                  parser_func)(args...)                      \
+                            : args_to_string(args...));                      \
+            }                                                                \
+            if (ctrl & 0b01) {                                               \
+                trace::CallFrames callFrames;                                \
+                callFrames.CollectNative();                                  \
+                callFrames.CollectPython();                                  \
+                MLOG(TRACE, WARN) << func << " with frame:\n" << callFrames; \
+            }                                                                \
+        }                                                                    \
     } while (0)
 
 template <typename StrT, size_t UniqueId, typename R, typename... Args>
@@ -276,6 +285,7 @@ struct HookFeatureBase {
     void* newFunc;
     void** oldFunc;
     std::function<bool(void)> filter_;
+    std::function<void(const OriginalInfo&)> getNewCallback_;
 };
 
 using WrapFuncGenerator = std::function<void*(const char*, const char*, void*)>;
@@ -340,6 +350,19 @@ struct __HookFeature : public HookFeatureBase {
         return newFuncGenerator(libName, symName.c_str(), newFunc);
     }
 
+    __HookFeature& setGetNewCallback(
+        const std::function<void(const OriginalInfo&)>& getNewCallback) {
+        getNewCallback_ = getNewCallback;
+        return *this;
+    }
+
+    template <typename... Args>
+    __HookFeature& setArgsParser(std::string (*parser)(Args...)) {
+        HookRuntimeContext::instance().argsParserMap().emplace(
+            symName, reinterpret_cast<void*>(parser));
+        return *this;
+    }
+
     std::function<void*(size_t)> findUniqueFunc;
     WrapFuncGenerator newFuncGenerator;
 };
@@ -372,6 +395,9 @@ struct MemberDetector<DerivedT,
         // TODO: if std::get<2>(*iter) is a pointer and it's point to
         // std::get<1>(*iter) then there will return nullptr
         *iter->oldFunc = info.oldFuncPtr;
+        if (iter->getNewCallback_) {
+            iter->getNewCallback_(info);
+        }
         return iter->getNewFunc(info.libName);
     }
 };

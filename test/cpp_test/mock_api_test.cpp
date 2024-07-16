@@ -7,6 +7,7 @@
 
 #include "GlobalVarMgr.h"
 #include "cuda_mock.h"
+#include "elf_parser.h"
 #include "gtest/gtest.h"
 #include "hook.h"
 #include "logger/logger_stl.h"

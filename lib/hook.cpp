@@ -5,13 +5,13 @@
 #include <errno.h>
 #include <limits.h>
 #include <link.h>
+#include <regex.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <regex.h>
 
 #include <atomic>
 #include <fstream>
@@ -26,9 +26,9 @@
 // #include "backward.hpp"
 
 #include "cuda_types.h"
-#include "logger/logger.h"
 #include "env_mgr.h"
 #include "env_util.h"
+#include "logger/logger.h"
 
 #if defined __x86_64__ || defined __x86_64
 #define R_JUMP_SLOT R_X86_64_JUMP_SLOT
@@ -262,7 +262,8 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
 
         size_t idx = ELF64_R_SYM(plt->r_info);
         idx = pltTable->dynsym[idx].st_name;
-        MLOG(HOOK, INFO) << pltTable->symbol_table + idx; //got symbol name from STRTAB
+        MLOG(HOOK, INFO) << pltTable->symbol_table +
+                                idx;  // got symbol name from STRTAB
         if (!installer.isTargetSymbol(pltTable->symbol_table + idx)) {
             continue;
         }
@@ -272,7 +273,8 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         if (prot == 0) {
             return -1;
         }
-        if (!(prot & PROT_WRITE)) { //not writable and cannot convert to writable page
+        if (!(prot & PROT_WRITE)) {  // not writable and cannot convert to
+                                     // writable page
             if (mprotect(ALIGN_ADDR(addr), page_size, PROT_READ | PROT_WRITE) !=
                 0) {
                 return -1;
@@ -282,6 +284,7 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         originalInfo.libName = pltTable->lib_name.c_str();
         originalInfo.basePtr = pltTable->base_addr;
         originalInfo.relaPtr = pltTable->rela_plt;
+        originalInfo.baseHeadPtr = pltTable->base_header_addr;
         originalInfo.pltTablePtr = reinterpret_cast<void**>(addr);
         originalInfo.oldFuncPtr =
             reinterpret_cast<void*>(*reinterpret_cast<size_t*>(addr));
@@ -322,10 +325,12 @@ int retrieve_dyn_lib(struct dl_phdr_info* info, size_t info_size, void* table) {
                      << reinterpret_cast<const void*>(info->dlpi_phdr)
                      << " info_size:" << info_size;
     /*
-        遍历info->dlpi_phdr数组中的program header, dlpi_phdr是一个ElfW(Phdr)类型的数组。
+        遍历info->dlpi_phdr数组中的program header,
+       dlpi_phdr是一个ElfW(Phdr)类型的数组。
         info->dlpi_phnum是一个ElfW(Half)类型的变量，表示dlpi_phdr数组的长度，也就是header的个数
 
-        ElfW(Phdr)是segment header，表征了segment的各个属性，它是一个宏，在64位系统下是Elf64_Phdr，定义在/usr/include/elf.h中，其定义如下：
+        ElfW(Phdr)是segment
+       header，表征了segment的各个属性，它是一个宏，在64位系统下是Elf64_Phdr，定义在/usr/include/elf.h中，其定义如下：
         typedef struct
         {
             Elf64_Word	p_type;		// Segment type
@@ -341,13 +346,16 @@ int retrieve_dyn_lib(struct dl_phdr_info* info, size_t info_size, void* table) {
     for (size_t header_index = 0; header_index < info->dlpi_phnum;
          header_index++) {
         /*
-        如果一个elf文件参与动态链接，那么program header中会出现类型为PT_DYNAMIC的header
+        如果一个elf文件参与动态链接，那么program
+        header中会出现类型为PT_DYNAMIC的header
         只有这个段是我们所关心的，其他不关心。
         */
         if (info->dlpi_phdr[header_index].p_type == PT_DYNAMIC) {
             /*
-                info->dlpi_addr: 共享对象的虚拟内存起始地址，相对于进程的地址空间。对于可执行文件，这通常是0。
-                info->dlpi_phdr[header_index].p_vaddr 第header_index个segment的虚拟起始地址，相对于info->dlpi_addr
+                info->dlpi_addr:
+               共享对象的虚拟内存起始地址，相对于进程的地址空间。对于可执行文件，这通常是0。
+                info->dlpi_phdr[header_index].p_vaddr
+               第header_index个segment的虚拟起始地址，相对于info->dlpi_addr
                 那么二者相加，就是segment的虚拟地址，也就是segment在进程中的实际地址
 
                 ElfW(Dyn)宏扩展为，定义在/usr/include/elf.h中
