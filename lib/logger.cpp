@@ -34,15 +34,15 @@ namespace hook {
 
 template <>
 struct str2value_impl<logger::LogLevel> {
-    void operator()(logger::LogLevel& lvl, const char* str,
-                    size_t len = std::string::npos) {
+    void operator()(logger::LogLevel& lvl, adt::StringRef str) {
         auto iter = std::find(std::begin(gLoggerLevelStringSet()),
                               std::end(gLoggerLevelStringSet()), str);
         if (iter != std::end(gLoggerLevelStringSet())) {
             lvl = static_cast<logger::LogLevel>(
                 std::distance(std::begin(gLoggerLevelStringSet()), iter));
         } else {
-            lvl = static_cast<logger::LogLevel>(::atoi(str));
+            // default warning
+            lvl = logger::LogLevel::warning;
         }
     }
 };
@@ -359,18 +359,33 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
         } while (!exit_.load());
     }
 
-    void sync_pause_loop() {
-        exit_.store(true);
-        if (cfg_->mode == LogConfig::kAsync) {
-            if (th_ && th_->joinable()) th_->join();
-        }
-        flush_queue();
-        fwriteString("[LOG END]\n", cfg_->stream);
-        fflush(cfg_->stream);
+    void sync_pause_loop(int signum) {
+        static std::once_flag onceFlag;
+        std::call_once(onceFlag, [this, signum = signum]() {
+            exit_.store(true);
+            if (cfg_->mode == LogConfig::kAsync) {
+                if (th_ && th_->joinable()) th_->join();
+            }
+            flush_queue();
+            switch (signum) {
+                case SIGSEGV:
+                    fwriteString("[LOG END reason:SIGSEGV]\n", cfg_->stream);
+                    break;
+                case SIGABRT:
+                    fwriteString("[LOG END reason:SIGABRT]\n", cfg_->stream);
+                    break;
+                case SIGTERM:
+                    fwriteString("[LOG END reason:SIGTERM]\n", cfg_->stream);
+                    break;
+                default:
+                    break;
+            }
+            fflush(cfg_->stream);
+        });
     }
 
     void report_fatal() {
-        sync_pause_loop();
+        sync_pause_loop(SIGUSR1);
         // write nullptr statement maybe be motion to front
         int n = 0;
         *reinterpret_cast<int*>(n) = 0;
@@ -438,7 +453,7 @@ void destroy_logger();
 void core_dump_handler(int signum) {
     auto consumer = LogStreamCollection::instance().release_consumer();
     // TODO: move to destructor
-    consumer->sync_pause_loop();
+    consumer->sync_pause_loop(signum);
     auto on_exit = LogStreamCollection::instance().on_exit();
     if (on_exit) on_exit();
     exit(signum);
@@ -467,9 +482,30 @@ LogStream& LogStream::instance(const LogConfig& cfg) {
 void setLoggerLevel(
     std::array<LogLevel, static_cast<size_t>(LogModule::last) + 1>& module_set_,
     LogLevel& level_) {
-    auto modules = hook::get_env_value<
-        std::vector<std::pair<std::string, logger::LogLevel>>>(
-        env_mgr::LOG_LEVEL);
+    adt::StringRef envValue =
+        hook::get_env_value<adt::StringRef>(env_mgr::LOG_LEVEL);
+    adt::StringRef mainLeveleStr, modulesStr;
+    for (auto m = LogModuleHelper::begin(); m != LogModuleHelper::end(); ++m) {
+        if (envValue.startsWith(*m)) {
+            modulesStr = envValue;
+            break;
+        }
+    }
+    if (modulesStr.empty()) {
+        size_t index = 0;
+        for (auto chr : envValue) {
+            if (chr == ',') {
+                modulesStr = envValue.slice(index + 1);
+                mainLeveleStr = envValue.slice(0, index);
+                break;
+            }
+            index++;
+        }
+    }
+
+    auto modules = hook::str2value<
+        std::vector<std::pair<std::string, logger::LogLevel>>>()(modulesStr);
+
     std::fill(std::begin(module_set_), std::end(module_set_),
               logger::LogLevel::warning);
     for (auto name : LogModuleHelper::enum_strs()) {
@@ -483,18 +519,7 @@ void setLoggerLevel(
             module_set_[IntModule] = iter->second;
         }
     }
-    auto default_lvl_iter =
-        std::find_if(std::begin(gLoggerLevelStringSet()),
-                     std::end(gLoggerLevelStringSet()), [&](const auto& str) {
-                         return std::find_if(modules.begin(), modules.end(),
-                                             [&](const auto& env_v) {
-                                                 return env_v.first == str;
-                                             }) != modules.end();
-                     });
-    if (default_lvl_iter != std::end(gLoggerLevelStringSet())) {
-        level_ = static_cast<LogLevel>(default_lvl_iter -
-                                       std::begin(gLoggerLevelStringSet()));
-    }
+    level_ = hook::str2value<logger::LogLevel>()(mainLeveleStr);
 }
 
 LogStream::LogStream(std::shared_ptr<LogConsumer>& logConsumer,
@@ -534,7 +559,7 @@ void destroy_logger() {
     LogStreamCollection::instance().release_all_stream();
     auto consumer = LogStreamCollection::instance().release_consumer();
     // TODO: move to destructor
-    consumer->sync_pause_loop();
+    consumer->sync_pause_loop(0);
 }
 
 thread_local std::chrono::high_resolution_clock::duration

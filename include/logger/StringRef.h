@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <cassert>
 #include <iosfwd>
 #include <optional>
 #include <stdexcept>
@@ -24,7 +25,8 @@ class StringRef {
 
     StringRef(const char* str) : size_(strlen(str)), str_(str) {}
 
-    StringRef(const char* str, size_t size) : size_(size), str_(str) {}
+    StringRef(const char* str, size_t size)
+        : size_(size != std::string::npos ? size : strlen(str_)), str_(str) {}
 
     StringRef(const_iterator begin, const_iterator end)
         : size_(std::distance(begin, end)), str_(begin) {}
@@ -40,13 +42,20 @@ class StringRef {
     StringRef& operator=(const StringRef& other) = default;
     StringRef& operator=(StringRef&& other) = default;
 
+    char operator[](size_t i) const {
+        assert(i < size_);
+        return str_[i];
+    }
+
     const CharT* c_str() const { return str_; }
 
     bool empty() const { return !size_ || !str_; }
 
     size_t size() const { return size_; }
 
-    std::string str() const { return std::string(str_, str_ + size_); }
+    std::string str() const {
+        return size_ != 0 ? std::string(str_, str_ + size_) : std::string();
+    }
 
     const char* data() const { return str_; }
 
@@ -84,6 +93,9 @@ class StringRef {
     StringRef drop_back(size_t size = 1) const {
         return StringRef(this->begin(), this->end() - size);
     }
+
+    StringRef slice(size_t s, size_t e) { return StringRef(str_ + s, e - s); }
+    StringRef slice(size_t s) { return this->slice(s, this->size()); }
 
     bool startsWith(StringRef prefix) {
         if (prefix.size() > this->size()) return false;

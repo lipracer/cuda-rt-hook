@@ -179,6 +179,15 @@ class HookRuntimeContext {
 
     size_t getCallCount(const std::string& libName, const std::string& symName);
 
+    void* lookUpArgsParser(const std::string& name) {
+        auto iter = args_parser_map_.find(name);
+        return iter == args_parser_map_.end() ? nullptr : iter->second;
+    }
+
+    std::unordered_map<std::string, void*>& argsParserMap() {
+        return args_parser_map_;
+    }
+
     struct TypeInfoHash {
         size_t operator()(const std::type_info* ti) const {
             return ti->hash_code();
@@ -197,6 +206,7 @@ class HookRuntimeContext {
         last_index_map_;
     std::unordered_map<const std::type_info*, std::vector<size_t>, TypeInfoHash>
         id_map_;
+    std::unordered_map<std::string, void*> args_parser_map_;
 };
 
 template <typename IterT>

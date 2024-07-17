@@ -40,10 +40,13 @@ enum class LogModule { profile, trace, hook, python, memory, debug, last };
 class LogModuleHelper {
    public:
     static auto& enum_strs() {
-        static std::array<const char*, 6> strs = {"PROFILE", "TRACE", "HOOK",
-                                                  "PYTHON", "MEMORY", "LAST"};
+        static std::array<const char*, 7> strs = {
+            "PROFILE", "TRACE", "HOOK", "PYTHON", "MEMORY", "DEBUG", "LAST"};
+        static_assert(sizeof(strs) / sizeof(const char*) ==
+                      static_cast<size_t>(LogModule::last) + 1);
         return strs;
     }
+
     static auto begin() { return enum_strs().begin(); }
     static auto end() { return enum_strs().end(); }
 

@@ -12,12 +12,14 @@
 find_package(PythonLibs REQUIRED)
 
 add_library(cuda_mock STATIC
+    util.cpp
     env_util.cpp
     GlobalVarMgr.cpp
     logger.cpp
     env_mgr.cpp
     backtrace.cpp
     statistic.cpp
+    elf_parser.cpp
     hook_context.cpp
     hook.cpp
     cuda_op_tracer.cpp
