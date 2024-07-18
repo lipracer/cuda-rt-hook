@@ -1,5 +1,6 @@
 import os
 import ctypes
+from enum import Enum
 from .dynamic_obj import *
 import json
 import re
@@ -45,6 +46,12 @@ def patch_runtime():
 
 def test_any_hook():
     return cuda_mock_impl.any_hook_install()
+
+
+class LOG_LEVEL(Enum):
+    INFO = 1
+    WARN = 2
+    ERROR = 3
 
 def log(*args, level=0):
     caller_frame = inspect.currentframe().f_back

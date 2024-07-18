@@ -252,6 +252,14 @@ static bool checkPathNotExistCreateIt(const std::string& path) {
     return true;
 }
 
+const struct {
+    int number;
+    const char* name;
+} kFailureSignals[] = {
+    {SIGSEGV, "SIGSEGV"}, {SIGILL, "SIGILL"},   {SIGFPE, "SIGFPE"},
+    {SIGABRT, "SIGABRT"}, {SIGTERM, "SIGTERM"},
+};
+
 class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
    public:
     LogConsumer(const std::shared_ptr<LogConfig>& cfg)
@@ -367,18 +375,11 @@ class LogConsumer : public std::enable_shared_from_this<LogConsumer> {
                 if (th_ && th_->joinable()) th_->join();
             }
             flush_queue();
-            switch (signum) {
-                case SIGSEGV:
-                    fwriteString("[LOG END reason:SIGSEGV]\n", cfg_->stream);
-                    break;
-                case SIGABRT:
-                    fwriteString("[LOG END reason:SIGABRT]\n", cfg_->stream);
-                    break;
-                case SIGTERM:
-                    fwriteString("[LOG END reason:SIGTERM]\n", cfg_->stream);
-                    break;
-                default:
-                    break;
+            auto iter = std::find_if(
+                std::begin(kFailureSignals), std::end(kFailureSignals),
+                [signum](auto& it) { return it.number == signum; });
+            if (iter != std::end(kFailureSignals)) {
+                fprintf(cfg_->stream, "[LOG END reason:%s]\n", iter->name);
             }
             fflush(cfg_->stream);
         });
@@ -470,12 +471,9 @@ LogStream& LogStream::instance(const LogConfig& cfg) {
         new LogStream(gLogConsumer, sp_cfg);
     gLogConsumer->notify();
 
-    {
-        signal(SIGSEGV, core_dump_handler);
-        signal(SIGABRT, core_dump_handler);
-        signal(SIGTERM, core_dump_handler);
+    for (auto& sig : kFailureSignals) {
+        signal(sig.number, core_dump_handler);
     }
-
     return *__instance;
 }
 
