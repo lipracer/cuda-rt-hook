@@ -10,7 +10,7 @@ versions = re.findall(r"major=(\d+), minor=(\d+), micro=(\d+)", str(sys.version_
 int_version = (int(versions[0]) << 24) + (int(versions[1]) << 16) + (int(versions[2]) << 8)
 # ignore lower 8 byte
 if (get_build_version_int() >> 8) != (int_version >> 8):
-    print(f"warning: {hex(get_build_version_int())} vs {hex(int_version)} mismatch")
+    log(f"build with python version:{hex(get_build_version_int())} vs runtime python version:{hex(int_version)} mismatch", LOG_LEVEL.WARN)
 
 atexit.register(uninitialize)
 
