@@ -73,8 +73,9 @@ std::string XpuRuntimePrintfHook::end_capture() {
     return str;
 }
 
-void __print_hook_initialize(std::vector<adt::StringRef>& target_libs,
-                             std::vector<adt::StringRef>& target_symbols) {
+void __print_hook_initialize(
+    const std::vector<adt::StringRef>& target_libs,
+    const std::vector<adt::StringRef>& target_symbols) {
     XpuRuntimePrintfHook::instance()->setTargetLibs(target_libs);
     XpuRuntimePrintfHook::instance()->setTargetSymbols(target_symbols);
     XpuRuntimePrintfHook::instance()->install();  // replace plt table

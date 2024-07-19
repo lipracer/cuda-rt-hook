@@ -38,13 +38,14 @@
 //     m.def("xpu_initialize", []() { xpu_dh_initialize(); });
 // }
 
-std::vector<adt::StringRef> convert_arg_list_of_str(const char** list_of_str) {
+std::vector<adt::StringRef> convert_arg_list_of_str(
+    const HookString_t* list_of_str) {
     std::vector<adt::StringRef> result;
     if (list_of_str == nullptr) {
         MLOG(PYTHON, ERROR) << "impossible convert_arg_list_of_str";
         return result;
     }
-    for (const char** str = list_of_str; *str != nullptr; ++str) {
+    for (const HookString_t* str = list_of_str; *str != nullptr; ++str) {
         result.emplace_back(adt::StringRef(*str));
         MLOG(PYTHON, INFO) << "convert_arg_list_of_str convert "
                            << result.back() << "to cpp object";
@@ -91,8 +92,8 @@ HOOK_API void xpu_initialize() {  // hooker = "profile"
     for print_hook
 */
 
-HOOK_API void print_hook_initialize(const char** target_libs,
-                                    const char** target_symbols) {
+HOOK_API void print_hook_initialize(const HookString_t* target_libs,
+                                    const HookString_t* target_symbols) {
     std::vector<adt::StringRef> cpp_target_libs =
         convert_arg_list_of_str(target_libs);
     std::vector<adt::StringRef> cpp_target_symbols =

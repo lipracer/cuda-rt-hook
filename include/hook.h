@@ -29,6 +29,8 @@ void install_hook();
 struct OriginalInfo {
     const char* libName = nullptr;
     const void* basePtr = nullptr;
+    /// @brief elf header load pointer at runtime, symbol address = baseHeadPtr
+    /// + offset(in elf)
     const void* baseHeadPtr = nullptr;
     void* relaPtr = nullptr;
     void* oldFuncPtr = nullptr;

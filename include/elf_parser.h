@@ -11,24 +11,36 @@
 
 namespace hook {
 
+/// @brief elf file parser for find symbol
 class HOOK_API CachedSymbolTable {
    public:
-    struct StringRefIterator {
-        StringRefIterator(const char *str);
+    // CStrIterator: A class to iterate over C-style strings
+    struct CStrIterator {
+        CStrIterator(const char *str);
 
-        StringRefIterator &operator++() &;
-        StringRefIterator operator++(int) &;
+        // Pre-increment operator
+        CStrIterator &operator++() &;
 
+        // Post-increment operator
+        CStrIterator operator++(int) &;
+
+        // Dereference operator to get a StringRef
         adt::StringRef operator*();
 
-        bool operator==(const StringRefIterator &other) const;
-        bool operator!=(const StringRefIterator &other) const;
+        // Equality comparison operator
+        bool operator==(const CStrIterator &other) const;
+
+        // Inequality comparison operator
+        bool operator!=(const CStrIterator &other) const;
+
+        // Return the raw pointer to the string
         const void *data() const;
 
        private:
         const char *str_;
     };
-
+    /// @brief simple buffer manager
+    /// @tparam T
     template <typename T>
     struct OwnerBuf {
         OwnerBuf() = default;
@@ -93,20 +105,23 @@ class HOOK_API CachedSymbolTable {
         size_t size_ = 0;
     };
 
-    StringRefIterator strtab_begin(const char *str) const;
+    CStrIterator strtab_begin(const char *str) const;
 
-    StringRefIterator strtab_end(const char *str) const;
+    CStrIterator strtab_end(const char *str) const;
 
-    std::tuple<StringRefIterator, StringRefIterator> strtab_range(
-        const char *str, size_t size) const {
+    std::tuple<CStrIterator, CStrIterator> strtab_range(const char *str,
+                                                        size_t size) const {
         return std::make_tuple(strtab_begin(str), strtab_begin(str + size));
     }
 
     CachedSymbolTable(const std::string &name, const void *base_address,
                       const std::vector<std::string> &section_names = {});
 
+    /// @brief move to sections header location
     void move_to_section_header();
 
+    /// @brief move target section location
+    /// @param index
     void move_to_section_header(size_t index);
 
     adt::StringRef getSectionName(size_t index) const;
@@ -148,9 +163,16 @@ class HOOK_API CachedSymbolTable {
     std::vector<std::string> section_names;
 };
 
+/// @brief create symbol table
+/// @param lib a elf file
+/// @param address The address where the elf file is loaded at runtime
+/// @return
 CachedSymbolTable *createSymbolTable(const std::string &lib,
                                      const void *address);
 
+/// @brief get symbol table
+/// @param lib a elf file
+/// @return
 CachedSymbolTable *getSymbolTable(const std::string &lib);
 
 }  // namespace hook

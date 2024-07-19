@@ -4,38 +4,37 @@
 
 namespace hook {
 
-CachedSymbolTable::StringRefIterator::StringRefIterator(const char *str)
-    : str_(str) {}
+CachedSymbolTable::CStrIterator::CStrIterator(const char *str) : str_(str) {}
 
-CachedSymbolTable::StringRefIterator &
-CachedSymbolTable::StringRefIterator::operator++() & {
+CachedSymbolTable::CStrIterator &CachedSymbolTable::CStrIterator::operator++()
+    & {
     size_t len = strlen(str_);
     ++len;
     str_ += len;
     return *this;
 }
 
-CachedSymbolTable::StringRefIterator
-CachedSymbolTable::StringRefIterator::operator++(int) & {
-    auto ret = StringRefIterator(str_);
+CachedSymbolTable::CStrIterator CachedSymbolTable::CStrIterator::operator++(
+    int) & {
+    auto ret = CStrIterator(str_);
     ++*this;
     return ret;
 }
 
-adt::StringRef CachedSymbolTable::StringRefIterator::operator*() {
+adt::StringRef CachedSymbolTable::CStrIterator::operator*() {
     return adt::StringRef(str_);
 }
 
-bool CachedSymbolTable::StringRefIterator::operator==(
-    const StringRefIterator &other) const {
+bool CachedSymbolTable::CStrIterator::operator==(
+    const CStrIterator &other) const {
     return str_ == other.str_;
 }
-bool CachedSymbolTable::StringRefIterator::operator!=(
-    const StringRefIterator &other) const {
+bool CachedSymbolTable::CStrIterator::operator!=(
+    const CStrIterator &other) const {
     return !(*this == other);
 }
 
-const void *CachedSymbolTable::StringRefIterator::data() const { return str_; }
+const void *CachedSymbolTable::CStrIterator::data() const { return str_; }
 
 CachedSymbolTable::CachedSymbolTable(
     const std::string &name, const void *base_address,
@@ -45,26 +44,26 @@ CachedSymbolTable::CachedSymbolTable(
       base_address(base_address),
       section_names(section_names) {
     CHECK(ifs.is_open(), "can't open file:{}", name);
-    MLOG(DEBUG, INFO) << name << " base address:" << base_address;
+    MLOG(TRACE, INFO) << name << " base address:" << base_address;
     ifs.read(reinterpret_cast<char *>(&elf_header), sizeof(elf_header));
     parse_named_section();
     parse_section_header();
     load_symbol_table();
     for (size_t i = 0; i < sections_.size(); ++i) {
-        MLOG(DEBUG, INFO) << "found section:" << i
+        MLOG(TRACE, INFO) << "found section:" << i
                           << " name:" << getSectionName(i)
                           << " size:" << prettyFormatSize(sections_[i].sh_size);
     }
 }
 
-CachedSymbolTable::StringRefIterator CachedSymbolTable::strtab_begin(
+CachedSymbolTable::CStrIterator CachedSymbolTable::strtab_begin(
     const char *str) const {
-    return CachedSymbolTable::StringRefIterator(str);
+    return CachedSymbolTable::CStrIterator(str);
 }
 
-CachedSymbolTable::StringRefIterator CachedSymbolTable::strtab_end(
+CachedSymbolTable::CStrIterator CachedSymbolTable::strtab_end(
     const char *str) const {
-    return CachedSymbolTable::StringRefIterator(str);
+    return CachedSymbolTable::CStrIterator(str);
 }
 
 void CachedSymbolTable::move_to_section_header() {
@@ -72,7 +71,6 @@ void CachedSymbolTable::move_to_section_header() {
 }
 
 void CachedSymbolTable::move_to_section_header(size_t index) {
-    MLOG(DEBUG, INFO) << "move to:" << index;
     move_to_section_header();
     size_t shstr_h_oft = sizeof(ElfW(Shdr)) * index;
     ifs.seekg(shstr_h_oft, std::ios::cur);
@@ -101,7 +99,7 @@ void CachedSymbolTable::load_symbol_table() {
 #endif
     for (size_t i = 0; i < symbol_tb.size(); ++i) {
         if (strtab_buf.size() <= symbol_tb[i].st_name) {
-            MLOG(DEBUG, INFO)
+            MLOG(TRACE, INFO)
                 << "symbol_tb[" << i << "].st_name(" << symbol_tb[i].st_name
                 << ") over buf size:" << strtab_buf.size();
             continue;
@@ -119,7 +117,7 @@ void CachedSymbolTable::load_symbol_table() {
 
     for (size_t i = 0; i < xpu_symbol_tb.size(); ++i) {
         if (strtab_buf.size() <= xpu_symbol_tb[i].st_name) {
-            MLOG(DEBUG, INFO) << "xpu_symbol_tb[" << i << "].st_name("
+            MLOG(TRACE, INFO) << "xpu_symbol_tb[" << i << "].st_name("
                               << xpu_symbol_tb[i].st_name
                               << ") over buf size:" << strtab_buf.size();
             continue;
@@ -129,7 +127,7 @@ void CachedSymbolTable::load_symbol_table() {
             adt::StringRef(&strtab_buf[xpu_symbol_tb[i].st_name]).str());
     }
 
-    MLOG(DEBUG, INFO) << libName << "\naddress range:" << min_address_ << "~"
+    MLOG(TRACE, INFO) << libName << "\naddress range:" << min_address_ << "~"
                       << max_address_;
 }
 
@@ -137,7 +135,7 @@ void CachedSymbolTable::parse_section_header() {
     CHECK_EQ(sizeof(ElfW(Shdr)), elf_header.e_shentsize);
     move_to_section_header();
     sections_.resize(elf_header.e_shnum);
-    MLOG(DEBUG, INFO) << "elf_header.e_shnum:" << elf_header.e_shnum;
+    MLOG(TRACE, INFO) << "elf_header.e_shnum:" << elf_header.e_shnum;
     ifs.read(reinterpret_cast<char *>(sections_.data()),
              sections_.size() * sizeof(sections_[0]));
 }
@@ -171,10 +169,10 @@ const std::string &CachedSymbolTable::lookUpSymbol(const void *func) const {
     static std::string empty("");
     auto offset = reinterpret_cast<const char *>(func) -
                   reinterpret_cast<const char *>(base_address);
-    MLOG(DEBUG, INFO) << "lookup address:" << offset;
+    MLOG(TRACE, INFO) << "lookup address:" << offset;
     auto iter = symbol_table.find(offset);
     if (iter == symbol_table.end()) {
-        MLOG(DEBUG, INFO) << libName
+        MLOG(TRACE, INFO) << libName
                           << "\nnot find launch_async symbol offset:" << offset
                           << " base address:" << base_address
                           << " func address:" << func << " range("
