@@ -26,22 +26,47 @@
 #define LOGGER_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #endif /* LOGGER_UNLIKELY */
 
-namespace logger {
-enum class LogLevel { info = 0, warning, error, fatal, last };
-enum class LogModule { profile, trace, hook, python, memory, debug, last };
+#define LOG_MODULE_LIST(_)                                                  \
+    _(profile, PROFILE), _(trace, TRACE), _(hook, HOOK), _(python, PYTHON), \
+        _(memory, MEMORY), _(debug, DEBUG), _(last, LAST)
 
-#define PROFILE logger::LogModule::profile
-#define TRACE logger::LogModule::trace
-#define HOOK logger::LogModule::hook
-#define PYTHON logger::LogModule::python
-#define MEMORY logger::LogModule::memory
-#define DEBUG logger::LogModule::debug
+#define LOG_GREEN_STR_WRAP(v) "\033[0;32m[" #v "]\033[0m"
+#define LOG_YELLOW_STR_WRAP(v) "\033[0;33m[" #v "]\033[0m"
+#define LOG_RED_STR_WRAP(v) "\033[0;31m[" #v "]\033[0m"
+
+#define LOG_LEVEL_LIST(_)                                                     \
+    _(info, INFO, LOG_GREEN_STR_WRAP), _(warning, WARN, LOG_YELLOW_STR_WRAP), \
+        _(error, ERROR, LOG_RED_STR_WRAP), _(fatal, FATAL, LOG_RED_STR_WRAP), \
+        _(last, LAST, LOG_RED_STR_WRAP)
+
+#define GET_LIST_INDEX_0_ITEM(v0, ...) v0
+#define GET_LIST_INDEX_0_STR_ITEM(v0, v1, ...) #v0
+#define GET_LIST_INDEX_1_STR_ITEM(v0, v1, ...) #v1
+#define GET_LIST_INDEX_0_LOG_STR_ITEM(v0, v1, ...) "[" #v1 "]"
+#define GET_LEVEL_COLOR_STR(v0, v1, v2, ...) v2(v1)
+
+namespace logger {
+enum class LogLevel { LOG_LEVEL_LIST(GET_LIST_INDEX_0_ITEM) };
+enum class LogModule { LOG_MODULE_LIST(GET_LIST_INDEX_0_ITEM) };
+
+// log need prefix avoid conflict
+#define __LOG_PROFILE__ logger::LogModule::profile
+#define __LOG_TRACE__ logger::LogModule::trace
+#define __LOG_HOOK__ logger::LogModule::hook
+#define __LOG_PYTHON__ logger::LogModule::python
+#define __LOG_MEMORY__ logger::LogModule::memory
+#define __LOG_DEBUG__ logger::LogModule::debug
+
+#define __LOG_INFO__ logger::LogLevel::info
+#define __LOG_WARN__ logger::LogLevel::warning
+#define __LOG_ERROR__ logger::LogLevel::error
+#define __LOG_FATAL__ logger::LogLevel::fatal
 
 class LogModuleHelper {
    public:
     static auto& enum_strs() {
         static std::array<const char*, 7> strs = {
-            "PROFILE", "TRACE", "HOOK", "PYTHON", "MEMORY", "DEBUG", "LAST"};
+            LOG_MODULE_LIST(GET_LIST_INDEX_1_STR_ITEM)};
         static_assert(sizeof(strs) / sizeof(const char*) ==
                       static_cast<size_t>(LogModule::last) + 1);
         return strs;
@@ -74,7 +99,7 @@ class LogModuleHelper {
 
 namespace std {
 inline std::string to_string(logger::LogLevel e) {
-    const char* name[] = {"info", "warning", "error", "fatal", "last"};
+    const char* name[] = {LOG_LEVEL_LIST(GET_LIST_INDEX_0_STR_ITEM)};
     return name[static_cast<int>(e)];
 }
 inline std::string to_string(logger::LogModule e) {
@@ -216,7 +241,6 @@ struct LogConfig {
         kAsync,
     };
     // NB: some time log string over 4K
-    // TODO: need check too long string
     size_t pageSize{4 * 1024 * 1024};
     LoggerMode mode{kAsync};
     std::FILE* stream{stdout};
@@ -255,10 +279,9 @@ class LogStream {
 
     const char* getStrLevel(LogLevel level) {
         constexpr const char* console_str[] = {
-            "\033[0;32m[INFO]\033[0m", "\033[0;33m[WARN]\033[0m",
-            "\033[0;31m[ERROR]\033[0m", "\033[0;31m[FATAL]\033[0m"};
-        constexpr const char* file_str[] = {"[INFO]", "[WARN]", "ERROR]",
-                                            "[FATAL]"};
+            LOG_LEVEL_LIST(GET_LEVEL_COLOR_STR)};
+        constexpr const char* file_str[] = {
+            LOG_LEVEL_LIST(GET_LIST_INDEX_0_LOG_STR_ITEM)};
         return cfg_->stream == stdout ? console_str[static_cast<int>(level)]
                                       : file_str[static_cast<int>(level)];
     }
@@ -342,10 +365,12 @@ struct LogWrapper {
             << LogStream::instance().logHeader()
             << "[TS:" << logger::LogStream::instance().time_duration() << "]";
     }
-
+    // reset format ctrl flag
     ~LogWrapper() {
         LogStream::instance().flush();
+#ifdef NDEBUG
         totalDur += std::chrono::high_resolution_clock::now() - st_;
+#endif
         // crash here
         if (LOGGER_UNLIKELY(level_ == LogLevel::fatal)) {
             LogStream::instance().log_fatal();
@@ -504,11 +529,6 @@ void regist_on_exit(const std::function<void(void)>& OnExit = {});
 
 }  // namespace logger
 
-#define INFO logger::LogLevel::info
-#define WARN logger::LogLevel::warning
-#define ERROR logger::LogLevel::error
-#define FATAL logger::LogLevel::fatal
-
 static constexpr char __LOGGER_HEADER__[] = "[{}:{}]";
 static constexpr char __MLOGGER_HEADER__[] = "[{}][{}:{}]";
 
@@ -527,19 +547,21 @@ static constexpr char __MLOGGER_HEADER__[] = "[{}][{}:{}]";
         logger::makeStringLiteral(":") + logger::makeStringLiteral<L>() +  \
         logger::makeStringLiteral("]")
 
-#define LOG_IMPL(level)                 \
-    !logger::LOG_CONDITATION(level)     \
-        ? void(0)                       \
-        : logger::StreamPlaceHolder() < \
-              logger::LogWrapper(level, \
+#define LOG_PREFIX_DEFINE(v) __LOG_##v##__
+
+#define LOG_IMPL(level)                                    \
+    !logger::LOG_CONDITATION(LOG_PREFIX_DEFINE(level))     \
+        ? void(0)                                          \
+        : logger::StreamPlaceHolder() <                    \
+              logger::LogWrapper(LOG_PREFIX_DEFINE(level), \
                                  GetFixedLogerHeader(__FILE__, __LINE__))
 
-#define MLOG_IMPL(m, str_m, level)      \
-    !logger::MLOG_CONDITATION(m, level) \
-        ? void(0)                       \
-        : logger::StreamPlaceHolder() < \
-              logger::MLogWrapper(      \
-                  str_m, level,         \
+#define MLOG_IMPL(m, str_m, level)                                            \
+    !logger::MLOG_CONDITATION(LOG_PREFIX_DEFINE(m), LOG_PREFIX_DEFINE(level)) \
+        ? void(0)                                                             \
+        : logger::StreamPlaceHolder() <                                       \
+              logger::MLogWrapper(                                            \
+                  str_m, LOG_PREFIX_DEFINE(level),                            \
                   MGetFixedLogerHeader(str_m, __FILE__, __LINE__))
 
 #define LOG(level) LOG_IMPL(level)
@@ -569,6 +591,10 @@ static constexpr char __MLOGGER_HEADER__[] = "[{}][{}:{}]";
     INTERNAL_CHECK_IMPL(((l) == (r)), \
                         fmt::format("expect " #l ":{} == " #r ":{}", l, r))
 
-#define be_unreachable(...) INTERNAL_CHECK_IMPL(false, __VA_ARGS__)
+#define CHECK_NE(l, r, ...)           \
+    INTERNAL_CHECK_IMPL(((l) != (r)), \
+                        fmt::format("expect " #l ":{} != " #r ":{}", l, r))
+
+#define hook_unreachable(...) INTERNAL_CHECK_IMPL(false, __VA_ARGS__)
 
 #define MLOG(m, level) MLOG_IMPL(m, #m, level)

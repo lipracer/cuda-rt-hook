@@ -121,8 +121,10 @@ TEST(LoggerBase, env_loglevel) {
     setenv("LOG_LEVEL", "WARN,PROFILE=INFO,TRACE=WARN", 1);
     setLoggerLevel(module_set, level);
     EXPECT_EQ(level, LogLevel::warning);
-    EXPECT_EQ(module_set[static_cast<size_t>(PROFILE)], LogLevel::info);
-    EXPECT_EQ(module_set[static_cast<size_t>(TRACE)], LogLevel::warning);
+    EXPECT_EQ(module_set[static_cast<size_t>(LOG_PREFIX_DEFINE(PROFILE))],
+              LogLevel::info);
+    EXPECT_EQ(module_set[static_cast<size_t>(LOG_PREFIX_DEFINE(TRACE))],
+              LogLevel::warning);
 }
 
 void goDie() { LOG(FATAL) << "go die"; }
