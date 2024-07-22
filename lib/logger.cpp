@@ -25,8 +25,8 @@
 #include "env_util.h"
 
 static std::vector<std::string>& gLoggerLevelStringSet() {
-    static std::vector<std::string> instance = {"INFO", "WARN", "ERROR",
-                                                "FATAL"};
+    static std::vector<std::string> instance = {
+        LOG_LEVEL_LIST(GET_LIST_INDEX_1_STR_ITEM)};
     return instance;
 }
 
