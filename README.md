@@ -44,6 +44,24 @@ import cuda_mock; cuda_mock.xpu_initialize() # 加入这一行
 
 ## 功能使用演示
 
+目前，支持以下功能的Runtime接口有:
+- xpu_malloc
+- xpu_free
+- xpu_current_device
+- xpu_set_device
+- xpu_wait
+- xpu_memcpy
+- xpu_launch_async
+- xpu_stream_create
+- xpu_stream_destroy
+- cudaMalloc
+- cudaFree
+- cudaMemcpy
+- cudaSetDevice
+- cudaGetDevice
+
+具体的支持情况请查阅[xpu_mock.cpp](https://github.com/lipracer/cuda-rt-hook/blob/main/lib/xpu_mock.cpp)的`XpuRuntimeApiHook`
+
 ### 功能1: 统计各个so库调用Runtime接口的次数和总耗时
 
 ```bash
