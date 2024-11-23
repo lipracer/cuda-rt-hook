@@ -169,7 +169,12 @@ class __GpuRuntimeProfiler:
 
         data = []
         for it in time_list:
-            data.append((it.key, it.cuda_time_total_str))
+            #rename cuda_time_total_str to device_time_total_str in pytorch 2.4+
+            #to support multiple device such as PrivateBackend1
+            if hasattr(it, "cuda_time_total_str"):
+                data.append((it.key, it.cuda_time_total_str))
+            else:
+                data.append((it.key, it.device_time_total_str))
             #print(it)
             #print(it.key)
             #print(it.self_cuda_time_total_str)
