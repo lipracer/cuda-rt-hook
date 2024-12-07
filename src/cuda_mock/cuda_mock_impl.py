@@ -133,7 +133,12 @@ class ProfileDataCollection:
 
 gProfileDataCollection = ProfileDataCollection("gpu" if is_nvidia_gpu else "xpu")
 gDefaultTargetLib = ["libxpucuda.so", "libcuda.so"]
-gDefaultTargetSymbols = ["__printf_chk", "printf", "fprintf", "__fprintf", "vfprintf",]
+gDefaultTargetSymbols = [
+    # 不带chk后缀的符号
+    "printf", "fprintf", 
+    #带chk后缀的符号
+    "__printf_chk", "__fprintf_chk",
+    ]
 class __XpuRuntimeProfiler:
     def __init__(self, target_libs = gDefaultTargetLib, target_symbols = gDefaultTargetSymbols):
         print_hook_initialize(target_libs=target_libs, target_symbols=target_symbols)

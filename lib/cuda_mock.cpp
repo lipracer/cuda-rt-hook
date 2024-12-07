@@ -1,17 +1,17 @@
 #include "cuda_mock.h"
 
+#include <Python.h>
 #include <dlfcn.h>
 #include <regex.h>
 #include <string.h>
-#include <Python.h>
 
 #include <csetjmp>
 #include <unordered_set>
 
 #include "GlobalVarMgr.h"
-#include "env_mgr.h"
 #include "backtrace.h"
 #include "cuda_op_tracer.h"
+#include "env_mgr.h"
 #include "hook.h"
 #include "logger/logger.h"
 

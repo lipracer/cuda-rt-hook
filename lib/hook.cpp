@@ -251,8 +251,14 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
     CHECK(installer.newFuncPtr, "new_func_ptr can't be empty!");
     if (!installer.isTargetLib(pltTable->lib_name.c_str()) ||
         !isTargetLibFromEnv(pltTable->lib_name.c_str())) {
+        MLOG(HOOK, INFO) << "[install_hooker SKIP]"
+                         << pltTable->lib_name.c_str()
+                         << ", not target lib, skip";
         return -1;
     }
+    MLOG(HOOK, INFO)
+        << "[install_hooker INSTALL] ====start install hook for lib "
+        << pltTable->lib_name.c_str() << "======";
     size_t index = 0;
     while (index < pltTable->rela_plt_cnt) {
         auto plt = pltTable->rela_plt + index++;
@@ -262,13 +268,16 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
 
         size_t idx = ELF64_R_SYM(plt->r_info);
         idx = pltTable->dynsym[idx].st_name;
-        MLOG(HOOK, INFO) << pltTable->symbol_table +
+        void* addr =
+            reinterpret_cast<void*>(pltTable->base_header_addr + plt->r_offset);
+
+        MLOG(HOOK, INFO) << "GOT[" << index << "]=" << addr << " symbol="
+                         << pltTable->symbol_table +
                                 idx;  // got symbol name from STRTAB
         if (!installer.isTargetSymbol(pltTable->symbol_table + idx)) {
             continue;
         }
-        void* addr =
-            reinterpret_cast<void*>(pltTable->base_header_addr + plt->r_offset);
+
         int prot = get_memory_permission(addr);
         if (prot == 0) {
             return -1;
@@ -277,6 +286,9 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
                                      // writable page
             if (mprotect(ALIGN_ADDR(addr), page_size, PROT_READ | PROT_WRITE) !=
                 0) {
+                MLOG(HOOK, ERROR) << "GOT[" << index
+                                  << "] is readonly and cannot be converted to "
+                                     "writable. abort hooking.";
                 return -1;
             }
         }
@@ -289,19 +301,21 @@ int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
         originalInfo.oldFuncPtr =
             reinterpret_cast<void*>(*reinterpret_cast<size_t*>(addr));
         auto new_func_ptr = installer.newFuncPtr(originalInfo);
+
+        MLOG(HOOK, INFO) << "start replace GOT[" << index << "]"
+                         << pltTable->symbol_table << ",  *" << addr << "="
+                         << new_func_ptr << ", original GOT[" << index
+                         << "]=" << *reinterpret_cast<void**>(addr);
+
         *reinterpret_cast<size_t*>(addr) =
             reinterpret_cast<size_t>(new_func_ptr);
-        MLOG(HOOK, INFO) << "store " << new_func_ptr << " to " << addr
-                         << " original value:"
-                         << *reinterpret_cast<void**>(addr);
         // we will not recover the address protect
         // TODO: move this to uninstall function
         // if (!(prot & PROT_WRITE)) {
         //     mprotect(ALIGN_ADDR(addr), page_size, prot);
         // }
-        MLOG(HOOK, INFO) << "replace:" << pltTable->symbol_table + idx
-                         << " with " << pltTable->symbol_table + idx
-                         << " success";
+        MLOG(HOOK, INFO) << "replace " << pltTable->symbol_table + idx
+                         << " success. ";
         if (installer.onSuccess) {
             installer.onSuccess();
         }

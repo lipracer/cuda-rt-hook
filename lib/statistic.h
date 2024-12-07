@@ -4,8 +4,8 @@
 
 #include <iosfwd>
 #include <set>
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 
 namespace hook {
 
@@ -45,7 +45,8 @@ class MemoryStatisticCollection {
             return lib == other.lib && devId == other.devId &&
                    kind == other.kind;
         }
-        friend std::ostream& operator<<(std::ostream& os, const PtrIdentity& id);
+        friend std::ostream& operator<<(std::ostream& os,
+                                        const PtrIdentity& id);
     };
     struct PtrIdentityHash {
         size_t operator()(const PtrIdentity& id) const {
