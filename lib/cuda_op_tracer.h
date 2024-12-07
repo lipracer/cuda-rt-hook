@@ -28,7 +28,7 @@ struct HookerInfo {
     const char* srcLib = nullptr;
     // the dynamic lib which the target symbol will be replace
     const char* targeLib = nullptr;
-    // the symbol which will be replace 
+    // the symbol which will be replace
     const char* symbolName = nullptr;
     void* newFuncPtr = nullptr;
 };

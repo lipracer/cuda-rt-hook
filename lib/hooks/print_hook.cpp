@@ -18,7 +18,12 @@
     XpuRuntimePrintfHook::instance()->save_to_internel_buffer(buf); \
     MLOG(PROFILE, WARN) << buf;
 
+/* __chk 系列多了一个flag参数*/
 static int builtin_printf_chk(int flag, const char* fmt, ...) {
+    __internal_printf();
+    return 0;
+}
+static int builtin_fprintf_chk(void* stdcout, int flag, const char* fmt, ...) {
     __internal_printf();
     return 0;
 }
@@ -56,6 +61,8 @@ bool XpuRuntimePrintfHook::targetSym(const char* name) {
 void* XpuRuntimePrintfHook::newFuncPtr(const hook::OriginalInfo& info) {
     if (adt::StringRef("__printf_chk") == curSymName()) {
         return reinterpret_cast<void*>(&builtin_printf_chk);
+    } else if (adt::StringRef("__fprintf_chk") == curSymName()) {
+        return reinterpret_cast<void*>(&builtin_fprintf_chk);
     } else if (adt::StringRef("printf") == curSymName()) {
         return reinterpret_cast<void*>(&builtin_printf);
     } else if (adt::StringRef("fprintf") == curSymName() ||
@@ -63,6 +70,8 @@ void* XpuRuntimePrintfHook::newFuncPtr(const hook::OriginalInfo& info) {
                adt::StringRef("vfprintf") == curSymName()) {
         return reinterpret_cast<void*>(&builtin_fprintf);
     }
+    MLOG(HOOK, ERROR) << "cannot find function pointer for " << curSymName()
+                      << ", return NULL instead";
     return nullptr;
 }
 

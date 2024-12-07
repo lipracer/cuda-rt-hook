@@ -1,7 +1,8 @@
 #pragma once
 
-#include <vector>
 #include <ostream>
+#include <vector>
+
 #include "logger.h"
 
 namespace logger {

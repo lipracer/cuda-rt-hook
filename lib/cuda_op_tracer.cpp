@@ -71,7 +71,8 @@ extern "C" CUresult cudaLaunchKernel_wrapper(const void* func, dim3 gridDim,
 
 hook::HookInstaller getHookInstaller(const HookerInfo& info) {
     static const char* symbolName = "cudaLaunchKernel";
-    static void* newFuncAddr = reinterpret_cast<void*>(&cudaLaunchKernel_wrapper);
+    static void* newFuncAddr =
+        reinterpret_cast<void*>(&cudaLaunchKernel_wrapper);
     if (info.srcLib && info.targeLib && info.symbolName && info.newFuncPtr) {
         kCudaRTLibName = info.srcLib;
         kPytorchCudaLibName = info.targeLib;
@@ -81,6 +82,17 @@ hook::HookInstaller getHookInstaller(const HookerInfo& info) {
     hook::HookInstaller installer;
     installer.isTargetLib = [](const char* libName) -> bool {
         CudaInfoCollection::instance().collectRtLib(libName);
+        // TODO 为啥这行打印不生效？
+        MLOG(HOOK, INFO) << "[installer.isTargetLib] libName:"
+                         << kPytorchCudaLibName
+                         << " targetlibName: " << libName;
+
+        /*
+            模糊匹配而不是精确匹配，因为：
+            1. libname 可能包含版本号，例如 libtorch_cuda.so.1
+            2. libname包含了完整的路径，例如
+           /usr/local/cuda-10.2/lib64/libcudart.so
+        */
         if (std::string(libName).find(kPytorchCudaLibName) !=
             std::string::npos) {
             return true;
@@ -88,7 +100,8 @@ hook::HookInstaller getHookInstaller(const HookerInfo& info) {
         return false;
     };
     installer.isTargetSymbol = [=](const char* symbol) -> bool {
-        // LOG(INFO) << "visit symbol:" << symbol;
+        MLOG(HOOK, INFO) << "[installer.isTargetSymbol] symbol:" << symbol
+                         << " targetSymbolName:" << symbolName;
         if (std::string(symbol) == symbolName) {
             return true;
         }
