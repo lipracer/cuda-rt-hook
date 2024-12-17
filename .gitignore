@@ -4,3 +4,6 @@ build/**
 dist/**
 **/__pycache__/**
 src/cuda_mock.egg-info/**
+
+main
+libhello.so
