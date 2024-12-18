@@ -141,8 +141,14 @@ gDefaultTargetSymbols = [
     ]
 class __XpuRuntimeProfiler:
     def __init__(self, target_libs = gDefaultTargetLib, target_symbols = gDefaultTargetSymbols):
-        print_hook_initialize(target_libs=target_libs, target_symbols=target_symbols)
+        self.target_libs = target_libs
+        self.target_symbols = target_symbols
+        self.init = False
     def start_capture(self):
+        # Note: 延迟plthook到第一次使用，此时更多的so已经加载完成（比如dlopen打开的so）
+        if not self.init:
+            print_hook_initialize(target_libs=self.target_libs, target_symbols=self.target_symbols)
+            self.init = True
         cuda_mock_impl.print_hook_start_capture()
 
     def end_capture(self, op_key):
