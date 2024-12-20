@@ -6,4 +6,4 @@ dist/**
 src/cuda_mock.egg-info/**
 
 main
-libhello.so
+**/*.so

@@ -81,6 +81,23 @@ hello #输出hello
 ```
 这里使用了c++20标准，因为后面大量用到了`std::format`。
 
+为了避免每次执行main之前，都要设置`LD_LIBRARY_PATH=./lib`，可以在编译命令末尾追加`-Wl,-rpath,'$ORIGIN/lib'`:
+```bash
+> g++ -std=c++20 main.cpp hook.cpp -o main -L lib -lhello -I lib/include -Wl,-rpath,'$ORIGIN/lib'
+> readelf -d main
+
+Dynamic section at offset 0x23b18 contains 32 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libhello.so]
+ 0x0000000000000001 (NEEDED)             Shared library: [libstdc++.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libgcc_s.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x000000000000001d (RUNPATH)            Library runpath: [$ORIGIN/lib]
+```
+这样，在main程序加载时，ld自动会在main程序所在位置(即`$ORIGIN`)的lib目录下查找动态库，免去了设置`LD_LIBRARY_PATH=./lib`这一步。
+
+
 ## 编写plthook
 
 在实际编写代码之前，先实际想想我们要做什么：
@@ -264,10 +281,10 @@ void hook_plt(...){
 编译：
 ```bash
 g++ -std=c++20 main.cpp hook.cpp -o main -L lib -lhello -I lib/include
-LD_LIBRARY_PATH=./lib ./main
+./main
 
 #打开logging
-LOGGING=1 LD_LIBRARY_PATH=./lib ./main
+LOGGING=1 ./main
 ```
 测试代码如下：
 ```c++
@@ -285,4 +302,50 @@ Hello, world!
 byebye
 ```
 
+# 除了plthook，有没有其他方法：LD_PRELOAD
 
+我们的目标是用一个自定义的任意函数（在上面的例子中是bye）替换hello。除了上面的plthook，有没有其他相对简单的办法达到相同的目标呢？
+
+这里我列出我能想到另一个办法。
+
+当ld加载动态库时，如果遇到多个so定义了同名的符号，那么使用第一次遇到的符号，而忽略之后同名的符号。基于这个机制，我们可以实现一个libmock.so，在其中定义和hello()同名的函数。
+
+不过，这里会遇到另一个问题，main并没有链接libmock.so，怎样让链接器自觉主动的去加载libmock.so呢？有好几种办法：
+1. libmock.so改名为libhello.so；但这需要libmock.so实现libhello.so的所有功能
+2. LD_PRELOAD，强制在ld加载所有so前，先加载LD_PRELOAD so中的所有符号
+
+于是，我们编译一个libmock.so，这个so只定义了一个符号，那就是hello(): `g++ -shared -fPIC -o mocklib/libmock.so mocklib/src/hello.cpp -Imocklib/include`
+
+```c++
+void hello() {
+    printf("byebye_PRELOAD\n"); //名为hello，实际打印byebye
+}
+```
+
+接下来使用LD_PRELOAD，来运行main:
+`LD_PRELOAD=./mocklib/libmock.so ./main`
+
+运行结果如下，符合预期：
+
+```bash
+> LD_PRELOAD=./mocklib/libmock.so ./main
+byebye_PRELOAD #libmock.so 中的hello
+byebye #plthook改写的bye
+```
+
+plthook 和 PRELOAD 两种方式同时生效了。从GOT角度来看，在程序加载时，所有so中的GOT表都指向了LD_PRELOAD的so中的符号，这不影响后续plthook的改写。
+
+至于区别呢？PRELOAD是在修改了定义侧的符号，影响该进程中的所有so对该符号的调用；而plthook则是在调用侧（每个so的GOT表中）修改，只影响被修改的so中的符号调用。
+
+听上去好像plthook更灵活一些。不过PRELOAD也有自己的优点，简单明了，不需要涉及elf、GOT、dynamic段等一堆概念。实际工作中，2种方式我都用过。
+
+### 如何调用libhello.so中的hello
+现在考虑另一个问题，假如libmock.so想要调用libhello.so中的hello，该怎么操作？首先，直接`hello()`肯定是不行的，因为hello已经指向了libmock.so中的hello。我们可以使用dlopen来动态加载libhello.so，然后dlsym获取其中的`hello()`符号：
+```bash
+#增加了对libdl的链接，里面包含了dlopen、dlsym等函数
+> g++ -shared -fPIC -o mocklib/libmock.so mocklib/src/hello.cpp -Imocklib/include -ldl
+> LD_PRELOAD=./mocklib/libmock.so ./main 
+byebye_PRELOAD #libmock.so 中的hello
+calling original hello(): Hello, world! # libmock.so 中的hello调用libhello.so中的hello
+byebye #plthook改写的bye
+```
