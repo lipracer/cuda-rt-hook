@@ -65,7 +65,7 @@ import cuda_mock; cuda_mock.xpu_initialize() # 加入这一行
 ### 功能1: 统计各个so库调用Runtime接口的次数和总耗时
 
 ```bash
-LOG_LEVEL=WARN python run.py
+LOG_LEVEL=PROFILE=INFO python run.py
 ```
 
 在程序运行结束之后会显示:
