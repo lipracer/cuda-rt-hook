@@ -137,6 +137,16 @@ HOOK_ENABLE_TRACE=xpu_malloc=0x2 python run.py
 - 开始跑你的训练脚本
 - 我们将会把堆栈打印到控制台
 
+### 功能8: 禁用XPURT_DISPATCH_MODE=PROFILING的打印
+```python
+import paddle # 或者 import torch
+import cuda_mock; cuda_mock.print_hook_initialize(["libxpucuda.so", "libcuda.so"], ["printf", "fprintf", "__printf_chk", "__fprintf_chk"])
+```
+
+```bash
+LOG_LEVEL="ERROR" python your_scripy.py
+```
+
 ## 环境变量
 
 | 环境变量 | 默认值 | 简短说明 |
