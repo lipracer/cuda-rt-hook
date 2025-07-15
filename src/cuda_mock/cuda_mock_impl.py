@@ -132,7 +132,7 @@ class ProfileDataCollection:
             json.dump(self.data, f, indent=4)
 
 gProfileDataCollection = ProfileDataCollection("gpu" if is_nvidia_gpu else "xpu")
-gDefaultTargetLib = ["libxpucuda.so", "libcuda.so"]
+gDefaultTargetLib = ["libxpucuda.so", "libxpusim.so", "libcuda.so"]
 gDefaultTargetSymbols = [
     # 不带chk后缀的符号
     "printf", "fprintf", 
