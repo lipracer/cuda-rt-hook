@@ -39,9 +39,10 @@ jobs:
           echo "$CHANGED_FILES"
 
       - name: Install clang-format
-        uses: aminya/setup-cpp@v1
-        with:
-          clangformat: 13.0.1
+        run: |
+          python3 -m venv "$RUNNER_TEMP/clang-format"
+          "$RUNNER_TEMP/clang-format/bin/python" -m pip install --only-binary=:all: clang-format==13.0.1
+          printf '%s\n' "$RUNNER_TEMP/clang-format/bin" >> "$GITHUB_PATH"
 
       - name: Run clang-format
         env:
