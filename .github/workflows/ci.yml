@@ -10,7 +10,7 @@ on:
 
 jobs:
   unit-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@v4
@@ -18,24 +18,15 @@ jobs:
         submodules: recursive
 
     - name: Set up Python 3.8
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v7
       with:
-        python-version: 3.8
-
-    - name: Set up CMake
-      run: |
-        sudo apt-get install -y cmake
-        pip install --upgrade pip
+        python-version: '3.8'
 
     - name: Run cpp tests
       run: |
-        cmake -S . -B build -DCMAKE_INSTALL_PREFIX=`$pwd/`build -DENABLE_BUILD_WITH_GTEST=ON
-        cmake --build build
-        cd build
-        ctest --version
-        ctest
-        cd ../
-        rm -rf build
+        cmake -S . -B build/cpp -DCMAKE_INSTALL_PREFIX="$PWD/build/cpp" -DENABLE_BUILD_WITH_GTEST=ON
+        cmake --build build/cpp --parallel 2
+        ctest --test-dir build/cpp --output-on-failure
 
     - name: Run python tests
       run: |
@@ -52,7 +43,8 @@ jobs:
         pytest test
 
     - name: Upload test results
-      uses: actions/upload-artifact@v3
+      if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@v7
       with:
         name: test-results
-        path: build/Testing/Temporary
+        path: build/cpp/Testing/Temporary
