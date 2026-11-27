@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include <algorithm>
+#include <memory>
 #include <numeric>
 
 #include "env_util.h"
@@ -110,7 +111,7 @@ TEST(SupportTest, functor_any_destructor) {
     {
         auto ptr = new int[size];
         std::iota(ptr, ptr + size, 0);
-        std::shared_ptr<int> sp(ptr);
+        std::shared_ptr<int> sp(ptr, std::default_delete<int[]>{});
         {
             support::Any any(sp);
             EXPECT_EQ(sp.use_count(), 2);
@@ -124,7 +125,7 @@ TEST(SupportTest, functor_any_destructor) {
     // test functor destructor
     {
         auto ptr = new int[size];
-        std::shared_ptr<int> sp(ptr);
+        std::shared_ptr<int> sp(ptr, std::default_delete<int[]>{});
         void (*func_ptr)(std::shared_ptr<int>) = nullptr;
         {
             auto functor = std::make_unique<support::Functor<void>>(func_ptr);
@@ -260,7 +261,7 @@ struct Tensor {
           totalSize(std::accumulate(shape.begin(), shape.end(), 1,
                                     std::multiplies<Dim>())),
           ByteSize(totalSize * elementSize),
-          storage(new char[ByteSize]) {}
+          storage(new char[ByteSize], std::default_delete<char[]>{}) {}
 
     Tensor(const Tensor& other) { *this = other; }
 
