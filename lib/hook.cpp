@@ -156,75 +156,67 @@ struct PltTable {
     bool operator!() const { return (bool)(*this); }
 };
 
-static size_t page_size;
-#define ALIGN_ADDR(addr) ((void*)((size_t)(addr) & ~(page_size - 1)))
+struct MemoryMapping {
+    uintptr_t start;
+    uintptr_t end;
+    int protection;
+};
 
-static int get_memory_permission(void* address) {
-    unsigned long addr = (unsigned long)address;
-    FILE* fp;
-    char buf[PATH_MAX];
-    char perms[5];
-    int bol = 1;
-
-    fp = fopen("/proc/self/maps", "r");
-    if (fp == NULL) {
-        return 0;
-    }
-    while (fgets(buf, PATH_MAX, fp) != NULL) {
+static std::vector<MemoryMapping> read_memory_mappings() {
+    std::ifstream maps("/proc/self/maps");
+    std::vector<MemoryMapping> mappings;
+    std::string line;
+    while (std::getline(maps, line)) {
         unsigned long start, end;
-        int eol = (strchr(buf, '\n') != NULL);
-        if (bol) {
-            /* The fgets reads from the beginning of a line. */
-            if (!eol) {
-                /* The next fgets reads from the middle of the same line. */
-                bol = 0;
-            }
-        } else {
-            /* The fgets reads from the middle of a line. */
-            if (eol) {
-                /* The next fgets reads from the beginning of a line. */
-                bol = 1;
-            }
+        char perms[5];
+        if (sscanf(line.c_str(), "%lx-%lx %4s", &start, &end, perms) != 3 ||
+            strlen(perms) != 4 || perms[3] != 'p') {
             continue;
         }
-
-        if (sscanf(buf, "%lx-%lx %4s", &start, &end, perms) != 3) {
-            continue;
-        }
-        if (start <= addr && addr < end) {
-            int prot = 0;
-            if (perms[0] == 'r') {
-                prot |= PROT_READ;
-            } else if (perms[0] != '-') {
-                goto unknown_perms;
-            }
-            if (perms[1] == 'w') {
-                prot |= PROT_WRITE;
-            } else if (perms[1] != '-') {
-                goto unknown_perms;
-            }
-            if (perms[2] == 'x') {
-                prot |= PROT_EXEC;
-            } else if (perms[2] != '-') {
-                goto unknown_perms;
-            }
-            if (perms[3] != 'p') {
-                goto unknown_perms;
-            }
-            if (perms[4] != '\0') {
-                perms[4] = '\0';
-                goto unknown_perms;
-            }
-            fclose(fp);
-            return prot;
-        }
+        int protection = (perms[0] == 'r' ? PROT_READ : 0) |
+                         (perms[1] == 'w' ? PROT_WRITE : 0) |
+                         (perms[2] == 'x' ? PROT_EXEC : 0);
+        mappings.push_back({start, end, protection});
     }
-    fclose(fp);
-    return 0;
-unknown_perms:
-    fclose(fp);
-    return 0;
+    return mappings;
 }
+
+struct GotPermissions {
+    bool make_writable(uintptr_t address) {
+        if (!mappings_loaded) {
+            mappings = read_memory_mappings();
+            mappings_loaded = true;
+        }
+        const uintptr_t page = address - address % page_size;
+        if (writable_pages.count(page)) {
+            return true;
+        }
+        auto it = std::upper_bound(mappings.begin(), mappings.end(), address,
+                                   [](uintptr_t addr, const MemoryMapping& m) {
+                                       return addr < m.start;
+                                   });
+        if (it == mappings.begin()) {
+            return false;
+        }
+        const auto& mapping = *std::prev(it);
+        if (address >= mapping.end || mapping.protection == PROT_NONE) {
+            return false;
+        }
+        if (!(mapping.protection & PROT_WRITE) &&
+            mprotect(reinterpret_cast<void*>(page), page_size,
+                     mapping.protection | PROT_WRITE) != 0) {
+            return false;
+        }
+        // Keep the page writable for the existing uninstall path.
+        writable_pages.insert(page);
+        return true;
+    }
+
+    const size_t page_size = sysconf(_SC_PAGESIZE);
+    bool mappings_loaded = false;
+    std::vector<MemoryMapping> mappings;
+    std::unordered_set<uintptr_t> writable_pages;
+};
 
 static bool isTargetLibFromEnv(const char* libName) {
     static const char* pattern =
@@ -245,89 +237,66 @@ static bool isTargetLibFromEnv(const char* libName) {
     return reti == 0;
 }
 
-int install_hooker(PltTable* pltTable, const hook::HookInstaller& installer) {
-    CHECK(installer.isTargetLib, "isTargetLib can't be empty!");
-    CHECK(installer.isTargetSymbol, "isTargetSymbol can't be empty!");
-    CHECK(installer.newFuncPtr, "new_func_ptr can't be empty!");
-    if (!installer.isTargetLib(pltTable->lib_name.c_str()) ||
-        !isTargetLibFromEnv(pltTable->lib_name.c_str())) {
-        MLOG(HOOK, INFO) << "[install_hooker SKIP]"
-                         << pltTable->lib_name.c_str()
-                         << ", not target lib, skip";
-        return -1;
+static void install_hooker(const PltTable& table,
+                           const std::vector<hook::HookInstaller>& installers,
+                           GotPermissions& permissions) {
+    std::vector<const hook::HookInstaller*> targets;
+    for (const auto& installer : installers) {
+        if (installer.isTargetLib(table.lib_name.c_str())) {
+            targets.push_back(&installer);
+        }
     }
-    MLOG(HOOK, INFO)
-        << "[install_hooker INSTALL] ====start install hook for lib "
-        << pltTable->lib_name.c_str() << "======";
-    size_t index = 0;
-    while (index < pltTable->rela_plt_cnt) {
-        auto plt = pltTable->rela_plt + index++;
-        if (ELF64_R_TYPE(plt->r_info) != R_JUMP_SLOT) {
+    if (targets.empty()) {
+        return;
+    }
+
+    for (size_t index = 0; index < table.rela_plt_cnt; ++index) {
+        const auto& relocation = table.rela_plt[index];
+        if (ELF64_R_TYPE(relocation.r_info) != R_JUMP_SLOT) {
             continue;
         }
 
-        size_t idx = ELF64_R_SYM(plt->r_info);
-        idx = pltTable->dynsym[idx].st_name;
-        void* addr =
-            reinterpret_cast<void*>(pltTable->base_header_addr + plt->r_offset);
+        const auto& symbol = table.dynsym[ELF64_R_SYM(relocation.r_info)];
+        const char* name = table.symbol_table + symbol.st_name;
+        for (const auto* installer : targets) {
+            if (!installer->isTargetSymbol(name)) {
+                continue;
+            }
+            auto** slot = reinterpret_cast<void**>(table.base_header_addr +
+                                                   relocation.r_offset);
+            if (!permissions.make_writable(reinterpret_cast<uintptr_t>(slot))) {
+                MLOG(HOOK, ERROR) << "Unable to make GOT slot writable for "
+                                  << name << " in " << table.lib_name;
+                return;
+            }
 
-        MLOG(HOOK, INFO) << "GOT[" << index << "]=" << addr << " symbol="
-                         << pltTable->symbol_table +
-                                idx;  // got symbol name from STRTAB
-        if (!installer.isTargetSymbol(pltTable->symbol_table + idx)) {
-            continue;
-        }
-
-        int prot = get_memory_permission(addr);
-        if (prot == 0) {
-            return -1;
-        }
-        if (!(prot & PROT_WRITE)) {  // not writable and cannot convert to
-                                     // writable page
-            if (mprotect(ALIGN_ADDR(addr), page_size, PROT_READ | PROT_WRITE) !=
-                0) {
-                MLOG(HOOK, ERROR) << "GOT[" << index
-                                  << "] is readonly and cannot be converted to "
-                                     "writable. abort hooking.";
-                return -1;
+            hook::OriginalInfo original;
+            original.libName = table.lib_name.c_str();
+            original.basePtr = table.base_addr;
+            original.relaPtr = table.rela_plt;
+            original.baseHeadPtr = table.base_header_addr;
+            original.pltTablePtr = slot;
+            original.oldFuncPtr = *slot;
+            *slot = installer->newFuncPtr(original);
+            MLOG(HOOK, INFO) << "replaced GOT[" << index << "] " << name
+                             << " in " << table.lib_name;
+            if (installer->onSuccess) {
+                installer->onSuccess();
             }
         }
-        hook::OriginalInfo originalInfo;
-        originalInfo.libName = pltTable->lib_name.c_str();
-        originalInfo.basePtr = pltTable->base_addr;
-        originalInfo.relaPtr = pltTable->rela_plt;
-        originalInfo.baseHeadPtr = pltTable->base_header_addr;
-        originalInfo.pltTablePtr = reinterpret_cast<void**>(addr);
-        originalInfo.oldFuncPtr =
-            reinterpret_cast<void*>(*reinterpret_cast<size_t*>(addr));
-        auto new_func_ptr = installer.newFuncPtr(originalInfo);
-
-        MLOG(HOOK, INFO) << "start replace GOT[" << index << "]"
-                         << pltTable->symbol_table << ",  *" << addr << "="
-                         << new_func_ptr << ", original GOT[" << index
-                         << "]=" << *reinterpret_cast<void**>(addr);
-
-        *reinterpret_cast<size_t*>(addr) =
-            reinterpret_cast<size_t>(new_func_ptr);
-        // we will not recover the address protect
-        // TODO: move this to uninstall function
-        // if (!(prot & PROT_WRITE)) {
-        //     mprotect(ALIGN_ADDR(addr), page_size, prot);
-        // }
-        MLOG(HOOK, INFO) << "replace " << pltTable->symbol_table + idx
-                         << " success. ";
-        if (installer.onSuccess) {
-            installer.onSuccess();
-        }
     }
-    return -1;
 }
 
 int retrieve_dyn_lib(struct dl_phdr_info* info, size_t info_size, void* table) {
     using VecTable = std::vector<PltTable>;
     auto* vecPltTable = reinterpret_cast<VecTable*>(table);
+    const char* name = info->dlpi_name ? info->dlpi_name : "";
+    if (!isTargetLibFromEnv(name)) {
+        return 0;
+    }
+
     PltTable pltTable;
-    pltTable.lib_name = info->dlpi_name ? info->dlpi_name : "";
+    pltTable.lib_name = name;
     pltTable.base_header_addr = (char*)info->dlpi_phdr - info_size;
     pltTable.base_addr = reinterpret_cast<const char*>(info->dlpi_addr);
     // pltTable.base_addr = pltTable.base_header_addr;
@@ -475,18 +444,28 @@ void* dlopen_wrapper(const char* pathname, int mode) {
 // }
 
 void install_hook(const HookInstaller& installer) {
-    page_size = sysconf(_SC_PAGESIZE);
+    install_hooks({installer});
+}
 
-    std::vector<PltTable> vecPltTable;
-    /*
-        遍历所有动态库，dl_iterate_phdr是系统提供的函数
-    */
-    dl_iterate_phdr(retrieve_dyn_lib, &vecPltTable);
-    MLOG(HOOK, INFO) << "collect plt table size:" << vecPltTable.size();
-    {
-        for (auto& pltTable : vecPltTable) {
-            (void)install_hooker(&pltTable, installer);
-        }
+void install_hooks(const std::vector<HookInstaller>& installers) {
+    if (installers.empty()) {
+        return;
+    }
+    for (const auto& installer : installers) {
+        CHECK(installer.isTargetLib, "isTargetLib can't be empty!");
+        CHECK(installer.isTargetSymbol, "isTargetSymbol can't be empty!");
+        CHECK(installer.newFuncPtr, "new_func_ptr can't be empty!");
+    }
+
+    std::vector<PltTable> tables;
+    dl_iterate_phdr(retrieve_dyn_lib, &tables);
+    MLOG(HOOK, INFO) << "collect plt table size:" << tables.size();
+
+    // Installer callbacks may run Python code. Keep them outside loader
+    // iteration.
+    GotPermissions permissions;
+    for (const auto& table : tables) {
+        install_hooker(table, installers, permissions);
     }
 }
 

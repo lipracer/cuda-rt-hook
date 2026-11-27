@@ -14,6 +14,7 @@
 #include "env_mgr.h"
 #include "hook.h"
 #include "logger/logger.h"
+#include "xpu_mock.h"
 
 std::jmp_buf log_jump_buffer = {{}};
 
@@ -123,93 +124,100 @@ void dh_internal_install_hook(const char* srcLib, const char* targetLib,
     hook::install_hook(hookInstaller);
 }
 
+using SymbolReplacements = std::unordered_map<std::string, std::string>;
+
 struct DHRegexHook : public hook::HookInstallerWrap<DHRegexHook> {
-    DHRegexHook(const char* srcLib, const char* targetLib,
-                const char* symbolName, const char* hookerLibPath,
-                const char* hookerSymbolName)
-        : strs_(5) {
-        strs_ = {srcLib, targetLib, symbolName, hookerLibPath,
-                 hookerSymbolName};
+    DHRegexHook(const char* targetLib, const char* hookerLibPath,
+                SymbolReplacements replacements)
+        : path_(hookerLibPath), replacements_(std::move(replacements)) {
         dynamic_obj_handle_ = dlopen(hookerLibPath, RTLD_LAZY);
         if (!dynamic_obj_handle_) {
             LOG(FATAL) << "can't open lib:" << hookerLibPath;
         }
-    }
-    bool targetLib(const char* name) {
-        bool match =
-            regex_match(strs_[1], name) && strcmp(name, strs_[3].c_str());
-        return visited_.insert(name).second && match;
+        pattern_ready_ = regcomp(&pattern_, targetLib, REG_NOSUB) == 0;
+        if (!pattern_ready_) {
+            LOG(WARN) << "illegal regex pattern:" << targetLib;
+        }
     }
 
-    bool targetSym(const char* name) { return strs_[2] == name; }
+    bool targetLib(const char* name) {
+        return pattern_ready_ && path_ != name &&
+               regexec(&pattern_, name, 0, nullptr, 0) == 0 &&
+               visited_.insert(name).second;
+    }
+
+    bool targetSym(const char* name) {
+        return replacements_.find(name) != replacements_.end();
+    }
 
     void* newFuncPtr(const hook::OriginalInfo& info) {
-        std::string org_symbol = "__origin_" + std::string(curSymName());
-        auto org_addr = dlsym(dynamic_obj_handle_, org_symbol.c_str());
-        LOG(INFO) << "set origin function name:" << org_symbol
-                  << " org_addr:" << org_addr;
-        if (org_addr) {
+        const std::string name(curSymName());
+        const std::string org_symbol = "__origin_" + name;
+        if (auto org_addr = dlsym(dynamic_obj_handle_, org_symbol.c_str())) {
             *reinterpret_cast<void**>(org_addr) = info.oldFuncPtr;
-        } else {
         }
-        void* new_func_ptr = nullptr;
-        if (strs_.back().empty()) {
-            LOG(INFO) << "dlsym lib:" << curLibName() << " symbol:" << strs_[2];
-            new_func_ptr = dlsym(dynamic_obj_handle_, strs_[2].c_str());
-        } else {
-            LOG(INFO) << "dlsym lib:" << curLibName()
-                      << " symbol:" << strs_.back();
-            new_func_ptr = dlsym(dynamic_obj_handle_, strs_.back().c_str());
-        }
-        CHECK(new_func_ptr, "new func ptr is nullptr");
+        const auto& replacement = replacements_.at(name);
+        void* new_func_ptr =
+            dlsym(dynamic_obj_handle_,
+                  replacement.empty() ? name.c_str() : replacement.c_str());
+        CHECK(new_func_ptr, "replacement symbol not found for {}", name);
         return new_func_ptr;
     }
+
     void onSuccess() {}
 
-    bool regex_match(const std::string& pattern, const char* str) {
-        regex_t regex;
-        int reti = 0;
-        do {
-            /* Compile regular expression */
-            reti = regcomp(&regex, pattern.c_str(), 0);
-            if (reti) {
-                LOG(WARN) << "ilegal regex pattern:" << pattern;
-                return false;
-            }
-            /* Execute regular expression */
-            reti = regexec(&regex, str, 0, nullptr, 0);
-            if (reti == REG_NOMATCH) {
-                return false;
-            }
-            if (0 == reti) {
-                return true;
-            }
-        } while (0);
-        return !reti;
-    }
-
     ~DHRegexHook() {
+        orgInfos.clear();
+        if (pattern_ready_) {
+            regfree(&pattern_);
+        }
         if (dynamic_obj_handle_) {
             dlclose(dynamic_obj_handle_);
         }
     }
 
    private:
-    std::vector<std::string> strs_;
+    std::string path_;
+    SymbolReplacements replacements_;
+    regex_t pattern_{};
+    bool pattern_ready_{false};
     void* dynamic_obj_handle_{nullptr};
     std::unordered_set<std::string> visited_;
 };
+
+static std::shared_ptr<DHRegexHook> keep_regex_hook(
+    const char* targetLib, const char* hookerLibPath,
+    SymbolReplacements replacements) {
+    static std::vector<std::shared_ptr<DHRegexHook>> hooks;
+    auto installer = std::make_shared<DHRegexHook>(targetLib, hookerLibPath,
+                                                   std::move(replacements));
+    hooks.push_back(installer);
+    return installer;
+}
 
 void dh_internal_install_hook_regex(const char* srcLib, const char* targetLib,
                                     const char* symbolName,
                                     const char* hookerLibPath,
                                     const char* hookerSymbolName) {
-    static std::vector<std::shared_ptr<DHRegexHook>> shared_ptr_vec;
+    keep_regex_hook(targetLib, hookerLibPath, {{symbolName, hookerSymbolName}})
+        ->install();
+}
 
-    shared_ptr_vec.emplace_back(std::make_shared<DHRegexHook>(
-        srcLib, targetLib, symbolName, hookerLibPath, hookerSymbolName));
-    shared_ptr_vec.back()->install();
-    LOG(INFO) << "dh_internal_install_hook_regex complete!";
+void dh_runtimeapi_hook_initialize_with_hooks(
+    const char* targetLib, const char* hookerLibPath,
+    const HookString_t* symbols, const HookString_t* replacementNames) {
+    auto runtime = runtimeapi_hook_installer();
+    SymbolReplacements replacements;
+    for (size_t i = 0; symbols[i]; ++i) {
+        replacements.emplace(symbols[i], replacementNames[i]);
+    }
+    if (replacements.empty()) {
+        hook::install_hook(runtime);
+        return;
+    }
+    auto extra =
+        keep_regex_hook(targetLib, hookerLibPath, std::move(replacements));
+    hook::install_hooks({runtime, extra->buildInstaller()});
 }
 
 struct DHPythonHook : public hook::HookInstallerWrap<DHPythonHook> {

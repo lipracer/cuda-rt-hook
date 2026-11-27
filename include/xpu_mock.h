@@ -7,6 +7,11 @@
 /// @brief replace xpu_set_device or cuda_set_device
 void dh_patch_runtime();
 
+namespace hook {
+struct HookInstaller;
+}
+hook::HookInstaller runtimeapi_hook_installer();
+
 /// @brief replace more runtime api to profile api performance and arguments
 void __runtimeapi_hook_initialize();
 

@@ -88,6 +88,14 @@ HOOK_API void xpu_initialize() {  // hooker = "profile"
     __runtimeapi_hook_initialize();
 }
 
+HOOK_API void xpu_initialize_with_hooks(HookString_t targetLib,
+                                        HookString_t hookerLibPath,
+                                        const HookString_t* symbols,
+                                        const HookString_t* replacementNames) {
+    dh_runtimeapi_hook_initialize_with_hooks(targetLib, hookerLibPath, symbols,
+                                             replacementNames);
+}
+
 /*
     for print_hook
 */

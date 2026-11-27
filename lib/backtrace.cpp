@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iomanip>
+#include <memory>
 #include <regex>
 
 #include "logger/logger.h"
@@ -52,55 +53,52 @@ bool CallFrames::CollectNative() {
 bool CallFrames::CollectPython() {
     python_frames_.clear();
     python_frames_.reserve(kMaxStackDeep);
-    // https://stackoverflow.com/questions/33637423/pygilstate-ensure-after-py-finalize
+    // PyPy does not support retrieving the Python stack here.
+#ifndef PYPY_VERSION
     if (!Py_IsInitialized()) {
-        LOG(WARN) << "python process finished!";
         return false;
     }
-    // The PyPy version does not yet support retrieving the Python stack.
-#ifndef PYPY_VERSION
-    // Acquire the Global Interpreter Lock (GIL) before calling Python C API
-    // functions from non-Python threads.
-    PyGILState_STATE gstate = PyGILState_Ensure();
-    // https://stackoverflow.com/questions/1796510/accessing-a-python-traceback-from-the-c-api
-    PyThreadState* tstate = PyThreadState_GET();
-    if (tstate) {
-        python_frames_.push_back("  Python frame:");
-#if PY_VERSION_HEX < 0x03090000
-        PyFrameObject* frame = tstate->frame;
-#else
-        PyFrameObject* frame = PyThreadState_GetFrame(tstate);
-#endif
-        while (NULL != frame) {
-            // int line = frame->f_lineno;
-            /*
-            frame->f_lineno will not always return the correct line number
-            you need to call PyCode_Addr2Line().
-            */
-#if PY_VERSION_HEX < 0x03090000
-            int line = PyCode_Addr2Line(frame->f_code, frame->f_lasti);
-            const char* filename = PyUnicode_AsUTF8(frame->f_code->co_filename);
-            const char* funcname = PyUnicode_AsUTF8(frame->f_code->co_name);
-#else
-            int line = PyFrame_GetLineNumber(frame);
-            auto code_obj = PyFrame_GetCode(frame);
-            const char* filename = PyUnicode_AsUTF8(code_obj->co_filename);
-            const char* funcname = PyUnicode_AsUTF8(code_obj->co_name);
-#endif
-            std::stringstream ss;
-            ss << "    " << filename << "(" << line << "): " << funcname;
-            python_frames_.push_back(ss.str());
-#if PY_VERSION_HEX < 0x03090000
-            frame = frame->f_back;
-#else
-            frame = PyFrame_GetBack(frame);
-#endif
-        }
-    } else {
-        LOG(WARN) << "PyThreadState_GET failed";
+#if PY_VERSION_HEX >= 0x030D0000
+    if (Py_IsFinalizing()) {
+        return false;
     }
+#elif PY_VERSION_HEX >= 0x03070000
+    if (_Py_IsFinalizing()) {
+        return false;
+    }
+#endif
+    struct GilGuard {
+        PyGILState_STATE state = PyGILState_Ensure();
+        ~GilGuard() { PyGILState_Release(state); }
+    } gil;
 
-    PyGILState_Release(gstate);
+    PyThreadState* tstate = PyThreadState_GET();
+    python_frames_.push_back("  Python frame:");
+#if PY_VERSION_HEX < 0x03090000
+    auto* frame = tstate->frame;
+    while (frame) {
+        auto* code = frame->f_code;
+        const int line = PyCode_Addr2Line(code, frame->f_lasti);
+#else
+    auto decref = [](auto* obj) { Py_DECREF(obj); };
+    using FrameRef = std::unique_ptr<PyFrameObject, decltype(decref)>;
+    using CodeRef = std::unique_ptr<PyCodeObject, decltype(decref)>;
+    FrameRef frame(PyThreadState_GetFrame(tstate), decref);
+    while (frame) {
+        CodeRef code(PyFrame_GetCode(frame.get()), decref);
+        const int line = PyFrame_GetLineNumber(frame.get());
+#endif
+        const char* filename = PyUnicode_AsUTF8(code->co_filename);
+        const char* funcname = PyUnicode_AsUTF8(code->co_name);
+        std::stringstream ss;
+        ss << "    " << filename << "(" << line << "): " << funcname;
+        python_frames_.push_back(ss.str());
+#if PY_VERSION_HEX < 0x03090000
+        frame = frame->f_back;
+#else
+        frame.reset(PyFrame_GetBack(frame.get()));
+#endif
+    }
 #endif
 
     if (python_frames_.empty()) {
