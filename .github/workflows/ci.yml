@@ -11,6 +11,9 @@ on:
 jobs:
   unit-test:
     runs-on: ubuntu-24.04
+    env:
+      # Keep the GCC 13 warning from the pinned fmt non-fatal (fmtlib/fmt#3533).
+      CXXFLAGS: -Wno-error=stringop-overflow
 
     steps:
     - uses: actions/checkout@v4
