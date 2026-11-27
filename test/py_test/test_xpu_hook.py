@@ -11,6 +11,7 @@ os.system(f'mv {xpu_lib} {new_name}')
 cpp_code_0 = '''
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
 
@@ -80,6 +81,7 @@ EXPORT void test_xpu_api() {
 cpp_code_1 = '''
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
 
