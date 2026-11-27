@@ -25,6 +25,10 @@ void dh_internal_install_hook_regex(HookString_t srcLib, HookString_t targetLib,
                                     HookString_t hookerLibPath,
                                     HookString_t hookerSymbolName);
 
+void dh_runtimeapi_hook_initialize_with_hooks(
+    HookString_t targetLib, HookString_t hookerLibPath,
+    const HookString_t* symbols, const HookString_t* replacementNames);
+
 HookContext_t dh_open_hook_context();
 
 HookContext_t dh_close_hook_context();

@@ -5,6 +5,7 @@
 #include <execinfo.h>
 #include <frameobject.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -121,46 +122,54 @@ DEF_FUNCTION_INT(cudaGetDevice, int* device) {
     return origin_cudaGetDevice(device);
 }
 
-DEF_FUNCTION_INT(cudaMalloc, void** devPtr, size_t size) {
-    int r = 0;
-    int devId = 0;
-
-    CHECK(origin_cudaGetDevice, "cudaGetDevice not binded");
-    r = origin_cudaGetDevice(&devId);
-    if (r != 0) {
-        return r;
+// Resolve from the original allocator's DSO (or its dependency scope if
+// the original slot is lazy). This does not depend on a patched get-device
+// slot.
+cudaGetDevice_t find_cuda_get_device(void* allocator) {
+    Dl_info info{};
+    if (!dladdr(allocator, &info) || !info.dli_fname) {
+        return nullptr;
     }
+    void* provider = dlopen(info.dli_fname, RTLD_LAZY | RTLD_NOLOAD);
+    if (!provider) {
+        return nullptr;
+    }
+    auto get_device =
+        reinterpret_cast<cudaGetDevice_t>(dlsym(provider, "cudaGetDevice"));
+    dlclose(provider);
+    return get_device;
+}
 
-    r = origin_cudaMalloc(devPtr, size);
-    if (r != 0) {
+std::atomic<cudaGetDevice_t> malloc_get_device{nullptr};
+std::atomic<cudaGetDevice_t> free_get_device{nullptr};
+
+DEF_FUNCTION_INT(cudaMalloc, void** devPtr, size_t size) {
+    const int result = origin_cudaMalloc(devPtr, size);
+    if (result != 0) {
         LOG(WARN) << "xpu cudaMalloc device memory failed!\n"
                   << hook::MemoryStatisticCollection::instance();
-        return r;
+        return result;
     }
 
-    hook::MemoryStatisticCollection::instance().record_alloc(
-        hook::HookRuntimeContext::instance().curLibName(), devId, *devPtr, size,
-        /*kind=GLOBAL_MEM*/ 0);
-
-    return r;
+    int devId = 0;
+    auto get_device = malloc_get_device.load();
+    if (get_device && get_device(&devId) == 0) {
+        hook::MemoryStatisticCollection::instance().record_alloc(
+            hook::HookRuntimeContext::instance().curLibName(), devId, *devPtr,
+            size, /*kind=GLOBAL_MEM*/ 0);
+    }
+    return result;
 }
 
 DEF_FUNCTION_INT(cudaFree, void* devPtr) {
-    int r = 0;
+    const int result = origin_cudaFree(devPtr);
     int devId = 0;
-
-    CHECK(origin_cudaGetDevice, "cudaGetDevice not binded");
-    r = origin_cudaGetDevice(&devId);
-    if (r != 0) {
-        return r;
+    auto get_device = free_get_device.load();
+    if (result == 0 && get_device && get_device(&devId) == 0) {
+        hook::MemoryStatisticCollection::instance().record_free(
+            hook::HookRuntimeContext::instance().curLibName(), devId, devPtr);
     }
-
-    r = origin_cudaFree(devPtr);
-
-    hook::MemoryStatisticCollection::instance().record_free(
-        hook::HookRuntimeContext::instance().curLibName(), devId, devPtr);
-
-    return r;
+    return result;
 }
 
 DEF_FUNCTION_INT(cudaMemcpy, void* dst, const void* src, size_t count,
@@ -198,8 +207,14 @@ class XpuRuntimeApiHook : public hook::HookInstallerWrap<XpuRuntimeApiHook> {
         BUILD_FEATURE(xpu_stream_create),
         BUILD_FEATURE(xpu_stream_destroy),
 
-        BUILD_FEATURE(cudaMalloc),
-        BUILD_FEATURE(cudaFree),
+        BUILD_FEATURE(cudaMalloc)
+            .setGetNewCallback([](const hook::OriginalInfo& info) {
+                malloc_get_device.store(find_cuda_get_device(info.oldFuncPtr));
+            }),
+        BUILD_FEATURE(cudaFree).setGetNewCallback(
+            [](const hook::OriginalInfo& info) {
+                free_get_device.store(find_cuda_get_device(info.oldFuncPtr));
+            }),
         BUILD_FEATURE(cudaMemcpy),
         BUILD_FEATURE(cudaSetDevice),
         BUILD_FEATURE(cudaGetDevice),
@@ -250,9 +265,13 @@ struct PatchRuntimeHook : public hook::HookInstallerWrap<PatchRuntimeHook> {
 
 }  // namespace
 
-void __runtimeapi_hook_initialize() {
+hook::HookInstaller runtimeapi_hook_installer() {
     static auto install_wrap = std::make_shared<XpuRuntimeApiHook>();
-    install_wrap->install();
+    return install_wrap->buildInstaller();
+}
+
+void __runtimeapi_hook_initialize() {
+    hook::install_hook(runtimeapi_hook_installer());
 }
 
 void dh_patch_runtime() { PatchRuntimeHook::instance()->install(); }

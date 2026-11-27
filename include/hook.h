@@ -58,6 +58,7 @@ struct HookInstaller {
 };
 
 void install_hook(const HookInstaller& installer);
+void install_hooks(const std::vector<HookInstaller>& installers);
 
 void uninstall_hook(const OriginalInfo& info);
 

@@ -41,6 +41,46 @@ import cuda_mock; cuda_mock.xpu_initialize() # 加入这一行
 
 根据实际的需求和场景设置cuda_mock的功能环境变量(参考[功能使用演示章节](#功能使用演示))，接着按照训练/推理脚本原有的执行方式运行脚本即可。
 
+### 动态库白名单和批量安装
+
+在目标 Linux 容器中确认实际加载的调用方库。例如 PyTorch 工作负载可以先用相同的 Python 环境执行下列命令。自定义扩展也应在该进程中先导入，再检查映射。
+
+```bash
+python - <<'PY'
+from pathlib import Path
+import torch
+
+paths = set()
+for line in Path('/proc/self/maps').read_text().splitlines():
+    fields = line.split(maxsplit=5)
+    if len(fields) == 6 and fields[5].startswith('/') and '.so' in fields[5]:
+        paths.add(fields[5])
+print('\n'.join(sorted(paths)))
+PY
+```
+
+把需要拦截的**调用方**路径写成 POSIX 基本正则，通过 `TARGET_LIB_FILTER` 在首次安装前传入。比如 `libtorch_cuda.so` 内部调用 `cudaMalloc` 时，应匹配 `libtorch_cuda.so`。如果需要 `libnccl.so` 内部发起的 Runtime 调用，则将其作为调用方加入白名单。过滤在解析动态库 ELF 表前执行。未设置变量时，库扫描当前已加载的对象。
+
+```bash
+TARGET_LIB_FILTER='/lib\(c10_cuda\|torch_cuda\|torch_python\)[.]so$' python run.py
+```
+
+用 `xpu_initialize_with_hooks()` 可以同时安装内置 Runtime hook 和同一个扩展里的多个替换符号。下例在一次遍历中处理所有目标符号。调用方正则同时受 `TARGET_LIB_FILTER` 约束。动态库需在安装前加载。
+
+```python
+import torch
+import cuda_mock
+
+cuda_mock.xpu_initialize_with_hooks(
+    r'/lib\(c10_cuda\|torch_cuda\|torch_python\)[.]so$',
+    '/path/to/libtrace_wrappers.so',
+    {'cudaMemcpyAsync': 'trace_cudaMemcpyAsync',
+     'cudaDeviceSynchronize': 'trace_cudaDeviceSynchronize'},
+)
+```
+
+扩展可以导出 `__origin_<原符号名>` 槽位，供 wrapper 转发原调用。收窄白名单后，用同一工作负载和全量扫描对比 API 命中及调用次数。全量扫描时可以设置 `LOG_LEVEL=WARN,PROFILE=INFO`，从退出日志的 `library name` 小节确认遗漏的调用方。例如，有些工作负载会经由 `libcublas.so` 内部调用 `cudaFree`。
+
 
 ## 功能使用演示
 

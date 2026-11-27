@@ -33,6 +33,23 @@ def internal_install_hook_regex(*args):
 def xpu_initialize():
     return cuda_mock_impl.xpu_initialize()
 
+def xpu_initialize_with_hooks(target_lib, hooker_lib, replacements):
+    """Install built-in Runtime hooks and a symbol mapping in one scan.
+
+    target_lib is a POSIX basic regular expression for caller DSO paths.
+    replacements maps imported symbol names to exports in hooker_lib.
+    Call after importing the libraries whose calls should be traced.
+    """
+    symbols = convert_arg_list_of_str(list(replacements))
+    names = convert_arg_list_of_str(list(replacements.values()))
+    install = cuda_mock_impl.xpu_initialize_with_hooks
+    install.argtypes = [ctypes.c_char_p, ctypes.c_char_p,
+                        ctypes.POINTER(ctypes.c_char_p),
+                        ctypes.POINTER(ctypes.c_char_p)]
+    install.restype = None
+    install(target_lib.encode("utf-8"), os.fsencode(hooker_lib), symbols, names)
+
+
 def print_hook_initialize(target_libs, target_symbols):
     target_libs = convert_arg_list_of_str(target_libs)
     target_symbols = convert_arg_list_of_str(target_symbols)
